@@ -1,0 +1,4 @@
+[submodule "server_builds_hapi_fhir_jpaserver"]
+	path = server_builds/hapi_fhir_jpaserver
+	url = https://github.com/karlmdavis/hapi-fhir-jpaserver-starter.git
+	branch = fhir-benchmarks
