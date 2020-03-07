@@ -8,7 +8,8 @@ use crate::errors::Result;
 use crate::servers::{ServerHandle, ServerPlugin};
 use crate::test_cases::CombinedResults;
 
-fn main() -> Result<()> {
+#[async_std::main]
+async fn main() -> Result<()> {
     // Parse command line args.
     // TODO
 
