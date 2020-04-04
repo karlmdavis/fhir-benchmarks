@@ -1,13 +1,14 @@
 //! TODO
 
 use crate::errors::Result;
+use serde::Serialize;
 use url::Url;
 
 mod hapi_jpa;
 
 /// Represents the unique name of a FHIR server implementation.
-#[derive(PartialEq, Eq, Hash)]
-pub struct ServerName(&'static str);
+#[derive(Debug, PartialEq, Clone, Serialize)]
+pub struct ServerName(pub &'static str);
 
 impl std::fmt::Display for ServerName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -33,7 +34,7 @@ pub trait ServerPlugin {
     /// all necessary configuration to get the server ready for use. Implementations of this method must
     /// **not** load any data; FHIR searches against newly-launched servers should return no results.
     ///
-    /// If the launch operation fails for any reason, implementations **must** return a `Result::Err` after
+    /// If the launch operation fails for any reason, implementations **must** still return a `Result::Err` after
     /// terminating any server processes and cleaning up all resources used by the server, just as if the
     /// server had been launched and the `ServerHandle::shutdown()` method was called. This is essential in
     /// order to ensure that a failed launch of one server does not impair the launch and testing of other

@@ -4,9 +4,31 @@ version = "0.1.0"
 authors = ["Karl M. Davis <karl@justdavis.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 async-std = { version = "1", features = ["attributes"] }
 url = "2"
 reqwest = { version = "0.10", features = ["blocking"] }
+
+# Provide application logging facilities.
+log = "0.4"
+slog = { version = "2", features = ["nested-values", "max_level_trace", "release_max_level_trace"] }
+slog-async = { version = "2" }
+slog-stdlog = { version = "4" }
+slog-scope = { version = "4" }
+slog-json = { version = "2" }
+slog_derive = { version = "0.2" }
+erased-serde = { version = "0.3" }
+
+# Read environment variables from a file, if present.
+dotenv = "0.15"
+
+# Provide JSON serialization/deserialization.
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+json = "0.12"
+
+# Represent decimal numbers without loss of precision.
+rust_decimal = { version = "1", features = ["serde-float"] }
+
+# Date & time.
+chrono = { version = "0.4", features = ["serde"] }

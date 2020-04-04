@@ -59,6 +59,6 @@ impl ServerHandle for HapiJpaFhirServerHandle {
     }
 
     fn base_url(&self) -> url::Url {
-        Url::parse("http://localhost:8080/hapi-fhir-jpaserver/").expect("Unable to parse URL.")
+        Url::parse("http://localhost:8080/hapi-fhir-jpaserver/fhir/").expect("Unable to parse URL.")
     }
 }

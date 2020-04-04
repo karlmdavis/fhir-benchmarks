@@ -9,11 +9,22 @@ pub type Result<T> = ::std::result::Result<T, AppError>;
 /// the enum entry.
 #[derive(Debug)]
 pub enum AppError {
+    SetLoggerError(log::SetLoggerError),
     VarError(std::env::VarError),
     IoError(std::io::Error),
+    ParseIntError(std::num::ParseIntError),
 
     /// Represents an error caused by a child process exiting abnormally.
     ChildProcessFailure(std::process::ExitStatus, String),
+
+    /// Represents an error caused by an attempt to lookup an unknown server.
+    UnknownServerError(&'static crate::servers::ServerName),
+}
+
+impl From<log::SetLoggerError> for AppError {
+    fn from(err: log::SetLoggerError) -> AppError {
+        AppError::SetLoggerError(err)
+    }
 }
 
 impl From<std::env::VarError> for AppError {
@@ -25,5 +36,11 @@ impl From<std::env::VarError> for AppError {
 impl From<std::io::Error> for AppError {
     fn from(err: std::io::Error) -> AppError {
         AppError::IoError(err)
+    }
+}
+
+impl From<std::num::ParseIntError> for AppError {
+    fn from(err: std::num::ParseIntError) -> AppError {
+        AppError::ParseIntError(err)
     }
 }
