@@ -127,18 +127,17 @@ fn create_logger_root() -> slog::Logger {
         .build()
         .fuse();
     let drain = slog_async::Async::new(drain).build().fuse();
-    let logger = slog::Logger::root(drain, o!());
 
-    logger
+    slog::Logger::root(drain, o!())
 }
 
 /// Initialize the application resources (e.g. test data) that will be used across projects.
-fn create_shared_resources() -> () {
+fn create_shared_resources() {
     // TODO this'll be stuff like the synthetic data and all that
 }
 
 /// Output all of the results.
-fn output_results(framework_results: &FrameworkResults) -> () {
+fn output_results(framework_results: &FrameworkResults) {
     let framework_results_pretty = serde_json::to_string_pretty(&framework_results).unwrap();
     println!("{}", framework_results_pretty);
 }
