@@ -29,20 +29,17 @@ async fn main() -> Result<()> {
     // Route all log crate usage (from our dependencies) to slog, instead.
     // Note: This has to stay in scope in order to keep working.
     let _scope_guard = slog_scope::set_global_logger(app_state.logger.clone());
-    let _log_guard = slog_stdlog::init_with_level(log::Level::Info)?;
+    slog_stdlog::init_with_level(log::Level::Info)?;
 
     // Test each selected FHIR server implementation.
     let mut framework_results = FrameworkResults::new(&app_state.server_plugins);
     for server_plugin in &app_state.server_plugins {
-        // Extract a reference to the ServerPlugin.
-        // Note: I only kinda sorta understand what's happening here, so baby-stepping it.
-        let server_plugin: &Box<dyn ServerPlugin> = server_plugin;
         let server_plugin: &dyn ServerPlugin = &**server_plugin;
 
         // Store results for the test here.
         let mut server_result = framework_results
             .get_mut(server_plugin.server_name())
-            .ok_or(AppError::UnknownServerError(server_plugin.server_name()))?;
+            .ok_or_else(|| AppError::UnknownServerError(server_plugin.server_name()))?;
 
         // Launch the implementation's server, etc. This will likely take a while.
         let launch_started = Utc::now();
@@ -101,6 +98,7 @@ async fn main() -> Result<()> {
 }
 
 /// Initializes the [AppState].
+#[allow(clippy::let_unit_value)]
 fn create_app_state() -> Result<AppState> {
     // Create the root slog logger.
     let logger = create_logger_root();
@@ -112,6 +110,7 @@ fn create_app_state() -> Result<AppState> {
     let server_plugins: Vec<Box<dyn ServerPlugin>> = servers::create_server_plugins()?;
 
     // Setup all global/shared resources.
+    // TODO: Remove `allow` on method once this actually does something.
     let shared_resources = create_shared_resources();
 
     Ok(AppState {
@@ -127,18 +126,17 @@ fn create_logger_root() -> slog::Logger {
         .build()
         .fuse();
     let drain = slog_async::Async::new(drain).build().fuse();
-    let logger = slog::Logger::root(drain, o!());
 
-    logger
+    slog::Logger::root(drain, o!())
 }
 
 /// Initialize the application resources (e.g. test data) that will be used across projects.
-fn create_shared_resources() -> () {
+fn create_shared_resources() {
     // TODO this'll be stuff like the synthetic data and all that
 }
 
 /// Output all of the results.
-fn output_results(framework_results: &FrameworkResults) -> () {
+fn output_results(framework_results: &FrameworkResults) {
     let framework_results_pretty = serde_json::to_string_pretty(&framework_results).unwrap();
     println!("{}", framework_results_pretty);
 }

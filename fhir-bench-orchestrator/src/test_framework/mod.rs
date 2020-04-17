@@ -18,12 +18,12 @@ pub struct FrameworkResults {
 
 impl FrameworkResults {
     /// Constructs a new `FrameworkResults` instance.
-    pub fn new(server_plugins: &Vec<Box<dyn ServerPlugin>>) -> FrameworkResults {
+    pub fn new(server_plugins: &[Box<dyn ServerPlugin>]) -> FrameworkResults {
         FrameworkResults {
             started: Utc::now(),
             completed: None,
             servers: server_plugins
-                .into_iter()
+                .iter()
                 .map(|p| p.server_name())
                 .map(|n| ServerResult::new(n))
                 .collect(),
@@ -34,8 +34,7 @@ impl FrameworkResults {
     pub fn get_mut(&mut self, server_name: &'static ServerName) -> Option<&mut ServerResult> {
         self.servers
             .iter_mut()
-            .filter(|s| s.server == server_name)
-            .next()
+            .find(|s| s.server == server_name)
     }
 }
 
