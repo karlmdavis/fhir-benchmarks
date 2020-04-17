@@ -32,13 +32,13 @@ pub fn run_operation_metadata(app_state: &AppState, server_handle: &dyn ServerHa
         match response {
             Ok(response) => {
                 if !response.status().is_success() {
-                    failures = failures + 1;
+                    failures += 1;
                     warn!(app_state.logger, "request failed"; "url" => url.as_str(), "status" => response.status().as_str());
                 }
                 // TODO more checks needed
             }
             Err(err) => {
-                failures = failures + 1;
+                failures += 1;
                 warn!(app_state.logger, "request failed"; "url" => url.as_str(), "err" => format!("{:?}", err));
             }
         };

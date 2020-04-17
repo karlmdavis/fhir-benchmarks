@@ -15,7 +15,7 @@ impl AppConfig {
 
         // Parse the configurable entries.
         let iterations: std::result::Result<String, std::env::VarError> =
-            env::var("FHIR_BENCH_ITERATIONS").or(Ok(String::from("1000")));
+            env::var("FHIR_BENCH_ITERATIONS").or_else(|_| Ok(String::from("1000")));
         let iterations: u32 = iterations?.parse()?;
         Ok(AppConfig { iterations })
     }
