@@ -1,5 +1,7 @@
 # FHIR Benchmarks
 
+![CI: Rust Basics](https://github.com/karlmdavis/fhir-benchmarks/workflows/Rust%20Basics/badge.svg)
+
 This project aims to benchmark the various FHIR server implementations that are available, detailing their resource usage and speed. The benchmarks are community-managed in this project, regularly run automatically using the code in this project, and the results are then published to:
 
 <TODO>
