@@ -2,9 +2,9 @@
 #
 # Based on https://github.com/actions-rs/meta/blob/master/recipes/quickstart.md
 
-on: [push, pull_request]
+name: 'CI: Rust Basics'
 
-name: Rust Basics
+on: [push, pull_request]
 
 jobs:
   check:
