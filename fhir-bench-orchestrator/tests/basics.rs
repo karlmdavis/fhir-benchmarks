@@ -10,9 +10,13 @@ fn default_config() {
     let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
     let output = cmd.unwrap();
 
-    assert_eq!("", String::from_utf8_lossy(&output.stderr));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    println!("STDERR:\n{}", stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    println!("STDOUT:\n{}", stdout);
+
     assert_eq!(true, output.status.success());
-    
+    assert_eq!("", stderr);
     let framework_results: FrameworkResults = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(true, framework_results.completed.is_some());
 }
