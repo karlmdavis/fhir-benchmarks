@@ -13,5 +13,5 @@ pub enum AppError {
 
     /// Represents an error caused by an attempt to lookup an unknown server.
     #[error("unknown server '{0}'")]
-    UnknownServerError(&'static crate::servers::ServerName),
+    UnknownServerError(crate::servers::ServerName),
 }

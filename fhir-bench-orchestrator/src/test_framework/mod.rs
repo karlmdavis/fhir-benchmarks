@@ -3,13 +3,13 @@ use anyhow::Result;
 use crate::servers::{ServerHandle, ServerName, ServerPlugin};
 use chrono::prelude::*;
 use rust_decimal::Decimal;
-use serde::Serialize;
+use serde::{Deserialize,Serialize};
 use slog_derive::SerdeValue;
 
 mod metadata;
 
 /// Stores the complete set of results from a run of the framework.
-#[derive(Clone, SerdeValue, Serialize)]
+#[derive(Clone, Deserialize, SerdeValue, Serialize)]
 pub struct FrameworkResults {
     pub started: DateTime<Utc>,
     pub completed: Option<DateTime<Utc>>,
@@ -25,23 +25,23 @@ impl FrameworkResults {
             servers: server_plugins
                 .iter()
                 .map(|p| p.server_name())
-                .map(|n| ServerResult::new(n))
+                .map(|n| ServerResult::new(n.clone()))
                 .collect(),
         }
     }
 
     /// Returns the `ServerResult` for the specified `ServerName`.
-    pub fn get_mut(&mut self, server_name: &'static ServerName) -> Option<&mut ServerResult> {
+    pub fn get_mut(&mut self, server_name: &ServerName) -> Option<&mut ServerResult> {
         self.servers
             .iter_mut()
-            .find(|s| s.server == server_name)
+            .find(|s| s.server == *server_name)
     }
 }
 
 /// Stores the set of test results from a single server implementation.
-#[derive(SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, SerdeValue, Clone, Serialize)]
 pub struct ServerResult {
-    pub server: &'static ServerName,
+    pub server: ServerName,
     pub launch: Option<FrameworkOperationLog>,
     pub operations: Option<Vec<ServerOperationLog>>,
     pub shutdown: Option<FrameworkOperationLog>,
@@ -49,7 +49,7 @@ pub struct ServerResult {
 
 impl ServerResult {
     /// Constructs a new `ServerResult` instance.
-    pub fn new(server: &'static ServerName) -> ServerResult {
+    pub fn new(server: ServerName) -> ServerResult {
         ServerResult {
             server,
             launch: None,
@@ -60,7 +60,7 @@ impl ServerResult {
 }
 
 /// Records the outcomes of a framework operation.
-#[derive(SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, SerdeValue, Clone, Serialize)]
 pub struct FrameworkOperationLog {
     pub started: DateTime<Utc>,
     pub completed: DateTime<Utc>,
@@ -79,7 +79,7 @@ impl FrameworkOperationLog {
 }
 
 /// Eunmerates the success vs. failure outcomes of a framework operation.
-#[derive(SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, SerdeValue, Clone, Serialize)]
 pub enum FrameworkOperationResult {
     /// Indicates that, as best as can be told, the framwork operation succeeded.
     Ok(),
@@ -89,9 +89,9 @@ pub enum FrameworkOperationResult {
 }
 
 /// TODO
-#[derive(SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, SerdeValue, Clone, Serialize)]
 pub struct ServerOperationLog {
-    pub operation: &'static ServerOperationName,
+    pub operation: ServerOperationName,
     pub started: DateTime<Utc>,
     pub iterations: u32,
     pub completed: Option<DateTime<Utc>>,
@@ -100,8 +100,15 @@ pub struct ServerOperationLog {
 }
 
 /// Represents the unique name of a FHIR server operation that this framework tests.
-#[derive(SerdeValue, Clone, Serialize)]
-pub struct ServerOperationName(pub &'static str);
+#[derive(Deserialize, SerdeValue, Clone, Serialize)]
+pub struct ServerOperationName(pub String);
+
+impl From<&str> for ServerOperationName {
+    fn from(server_operation_name: &str) -> Self {
+        ServerOperationName(server_operation_name.to_owned())
+    }
+}
+
 
 impl std::fmt::Display for ServerOperationName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -110,7 +117,7 @@ impl std::fmt::Display for ServerOperationName {
 }
 
 /// Details the performance of a single server operation, across all iterations (including any failures).
-#[derive(SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, SerdeValue, Clone, Serialize)]
 pub struct ServerOperationMetrics {
     pub throughput_rpm: Decimal,
     pub latency_mean: Decimal,
@@ -137,20 +144,17 @@ pub fn run_operations(app_state: &AppState, server_handle: &dyn ServerHandle) ->
 /// as otherwise serde serialization does not preserve field order.
 #[cfg(test)]
 mod tests {
-    use crate::servers::ServerName;
     use crate::test_framework::{
         FrameworkOperationLog, FrameworkOperationResult, FrameworkResults, ServerOperationLog,
-        ServerOperationMetrics, ServerOperationName, ServerResult,
+        ServerOperationMetrics, ServerResult,
     };
     use chrono::prelude::*;
     use rust_decimal::Decimal;
     use serde_json::json;
     use std::str::FromStr;
 
-    static SERVER_NAME_FAKE_TEXT: &str = "Fake HAPI";
-    static SERVER_NAME_FAKE: ServerName = ServerName(SERVER_NAME_FAKE_TEXT);
-    static SERVER_OP_NAME_FAKE_TEXT: &str = "Operation A";
-    static SERVER_OP_NAME_FAKE: ServerOperationName = ServerOperationName(SERVER_OP_NAME_FAKE_TEXT);
+    static SERVER_NAME_FAKE: &str = "Fake HAPI";
+    static SERVER_OP_NAME_FAKE: &str = "Operation A";
 
     /// Verifies that `FrameworkOperationLog` serializes as expected.
     #[test]
@@ -215,7 +219,7 @@ mod tests {
         });
         let expected = serde_json::to_string(&expected).unwrap();
         let actual = ServerOperationLog {
-            operation: &SERVER_OP_NAME_FAKE,
+            operation: SERVER_OP_NAME_FAKE.into(),
             started: Utc.ymd(2020, 1, 1).and_hms(15, 0, 0),
             iterations: 10,
             completed: Some(Utc.ymd(2020, 1, 1).and_hms(16, 0, 0)),
@@ -275,14 +279,14 @@ mod tests {
             started: Utc.ymd(2020, 1, 1).and_hms(12, 0, 0),
             completed: Some(Utc.ymd(2020, 1, 1).and_hms(19, 0, 0)),
             servers: vec![ServerResult {
-                server: &SERVER_NAME_FAKE,
+                server: SERVER_NAME_FAKE.into(),
                 launch: Some(FrameworkOperationLog {
                     started: Utc.ymd(2020, 1, 1).and_hms(13, 0, 0),
                     completed: Utc.ymd(2020, 1, 1).and_hms(14, 0, 0),
                     outcome: FrameworkOperationResult::Ok(),
                 }),
                 operations: Some(vec![ServerOperationLog {
-                    operation: &SERVER_OP_NAME_FAKE,
+                    operation: SERVER_OP_NAME_FAKE.into(),
                     started: Utc.ymd(2020, 1, 1).and_hms(15, 0, 0),
                     iterations: 10,
                     completed: Some(Utc.ymd(2020, 1, 1).and_hms(16, 0, 0)),
