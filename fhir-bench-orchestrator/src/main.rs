@@ -5,7 +5,8 @@ mod errors;
 mod servers;
 mod test_framework;
 
-use crate::errors::{AppError, Result};
+use anyhow::{anyhow,Context,Result};
+use crate::errors::AppError;
 use crate::servers::{ServerHandle, ServerPlugin};
 use crate::test_framework::{FrameworkOperationLog, FrameworkOperationResult, FrameworkResults};
 use chrono::prelude::*;
@@ -30,6 +31,9 @@ async fn main() -> Result<()> {
     // Note: This has to stay in scope in order to keep working.
     let _scope_guard = slog_scope::set_global_logger(app_state.logger.clone());
     slog_stdlog::init_with_level(log::Level::Info)?;
+
+    // Verify that pre-requisites are present.
+    verify_prereqs()?;
 
     // Test each selected FHIR server implementation.
     let mut framework_results = FrameworkResults::new(&app_state.server_plugins);
@@ -128,6 +132,24 @@ fn create_logger_root() -> slog::Logger {
     let drain = slog_async::Async::new(drain).build().fuse();
 
     slog::Logger::root(drain, o!())
+}
+
+/// Verifies that the required tools are present on this system.
+fn verify_prereqs() -> Result<()> {
+    use std::process::Command;
+
+    let docker_compose_output = Command::new("docker-compose")
+        .args(&["--help"])
+        .output()
+        .context("Failed to run 'docker-compose --help'.")?;
+    if !docker_compose_output.status.success() {
+        return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
+            docker_compose_output.status,
+            "Missing pre-req: docker-compose.".to_owned(),
+        )));
+    }
+
+    Ok(())
 }
 
 /// Initialize the application resources (e.g. test data) that will be used across projects.

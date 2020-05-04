@@ -1,5 +1,5 @@
 use crate::AppState;
-use crate::errors::Result;
+use anyhow::Result;
 use crate::servers::{ServerHandle, ServerName, ServerPlugin};
 use chrono::prelude::*;
 use rust_decimal::Decimal;
