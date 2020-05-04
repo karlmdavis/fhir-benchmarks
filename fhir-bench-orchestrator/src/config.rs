@@ -1,6 +1,6 @@
 //! Application configuration.
 
-use crate::errors::Result;
+use anyhow::Result;
 use std::env;
 
 /// Represents the application's configuration.

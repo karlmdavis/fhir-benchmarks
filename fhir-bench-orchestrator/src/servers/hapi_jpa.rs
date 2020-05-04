@@ -1,6 +1,6 @@
 //! TODO
 use super::{ServerHandle, ServerName, ServerPlugin};
-use crate::errors::Result;
+use anyhow::{anyhow,Context,Result};
 use std::process::Command;
 use url::Url;
 
@@ -27,12 +27,13 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
         let docker_up_output = Command::new("docker-compose")
             .args(&["up", "--detach", "--build"])
             .current_dir("server_builds/hapi_fhir_jpaserver")
-            .output()?;
+            .output()
+            .context("Failed to run 'docker-compose up'.")?;
         if !docker_up_output.status.success() {
-            return Err(crate::errors::AppError::ChildProcessFailure(
+            return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
                 docker_up_output.status,
                 "Failed to launch HAPI FHIR JPA Server via docker-compose.".to_owned(),
-            ));
+            )));
         }
 
         Ok(Box::new(HapiJpaFhirServerHandle {}))
@@ -47,12 +48,13 @@ impl ServerHandle for HapiJpaFhirServerHandle {
         let docker_down_output = Command::new("docker-compose")
             .args(&["down"])
             .current_dir("server_builds/hapi_fhir_jpaserver")
-            .output()?;
+            .output()
+            .context("Failed to run 'docker-compose down'.")?;
         if !docker_down_output.status.success() {
-            return Err(crate::errors::AppError::ChildProcessFailure(
+            return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
                 docker_down_output.status,
                 "Failed to shutdown HAPI FHIR JPA Server via docker-compose.".to_owned(),
-            ));
+            )));
         }
 
         Ok(())

@@ -22,6 +22,10 @@ erased-serde = { version = "0.3" }
 # Read environment variables from a file, if present.
 dotenv = "0.15"
 
+# Easier idiomatic error handling.
+anyhow = "1"
+thiserror = "1"
+
 # Provide JSON serialization/deserialization.
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }

@@ -1,6 +1,6 @@
 //! TODO
 
-use crate::errors::Result;
+use anyhow::Result;
 use serde::Serialize;
 use url::Url;
 
