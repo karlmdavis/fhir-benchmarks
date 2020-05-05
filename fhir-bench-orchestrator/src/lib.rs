@@ -96,6 +96,7 @@ pub async fn run_bench_orchestrator() -> Result<()> {
     }
 
     // Output results.
+    framework_results.completed = Some(Utc::now());
     output_results(&framework_results);
 
     Ok(())
@@ -124,7 +125,7 @@ fn create_app_state() -> Result<AppState> {
 
 /// Builds the root Logger for the application to use.
 fn create_logger_root() -> slog::Logger {
-    let drain = slog_json::Json::new(std::io::stdout())
+    let drain = slog_json::Json::new(std::io::stderr())
         .set_pretty(true)
         .add_default_keys()
         .build()
