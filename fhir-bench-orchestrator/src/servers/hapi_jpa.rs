@@ -28,7 +28,9 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
     fn launch(&self) -> Result<Box<dyn ServerHandle>> {
         // Build and launch our submodule'd fork of the sample JPA server.
         let docker_up_output = Command::new("docker-compose")
-            .args(&["up", "--detach", "--build"])
+            .args(&["up", "--detach"])
+            .env("COMPOSE_DOCKER_CLI_BUILD", "1")
+            .env("DOCKER_BUILDKIT", "1")
             .current_dir("server_builds/hapi_fhir_jpaserver")
             .output()
             .context("Failed to run 'docker-compose up'.")?;
