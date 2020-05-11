@@ -1,7 +1,7 @@
 //! TODO
 
 use anyhow::Result;
-use serde::{Deserialize,Serialize};
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 mod hapi_jpa;

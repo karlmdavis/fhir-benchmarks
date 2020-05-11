@@ -1,9 +1,9 @@
+use crate::servers::{ServerHandle, ServerName, ServerPlugin};
 use crate::AppState;
 use anyhow::Result;
-use crate::servers::{ServerHandle, ServerName, ServerPlugin};
 use chrono::prelude::*;
 use rust_decimal::Decimal;
-use serde::{Deserialize,Serialize};
+use serde::{Deserialize, Serialize};
 use slog_derive::SerdeValue;
 
 mod metadata;
@@ -32,9 +32,7 @@ impl FrameworkResults {
 
     /// Returns the `ServerResult` for the specified `ServerName`.
     pub fn get_mut(&mut self, server_name: &ServerName) -> Option<&mut ServerResult> {
-        self.servers
-            .iter_mut()
-            .find(|s| s.server == *server_name)
+        self.servers.iter_mut().find(|s| s.server == *server_name)
     }
 }
 
@@ -128,7 +126,6 @@ impl From<&str> for ServerOperationName {
     }
 }
 
-
 impl std::fmt::Display for ServerOperationName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -149,7 +146,10 @@ pub struct ServerOperationMetrics {
 }
 
 /// TODO
-pub fn run_operations(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<Vec<ServerOperationLog>> {
+pub fn run_operations(
+    app_state: &AppState,
+    server_handle: &dyn ServerHandle,
+) -> Result<Vec<ServerOperationLog>> {
     let mut results = vec![];
 
     results.push(metadata::run_operation_metadata(app_state, server_handle));

@@ -5,14 +5,14 @@ pub mod errors;
 pub mod servers;
 pub mod test_framework;
 
-use anyhow::{anyhow,Context,Result};
+use crate::config::AppConfig;
 use crate::errors::AppError;
 use crate::servers::{ServerHandle, ServerPlugin};
 use crate::test_framework::{FrameworkOperationLog, FrameworkOperationResult, FrameworkResults};
+use anyhow::{anyhow, Context, Result};
 use chrono::prelude::*;
 use slog::{self, o, Drain};
 use slog_json;
-use crate::config::AppConfig;
 
 /// Represents the application's context/state.
 pub struct AppState {
@@ -72,7 +72,6 @@ pub async fn run_bench_orchestrator() -> Result<()> {
         if server_result.launch.as_ref().unwrap().is_ok() {
             let server_handle: &dyn ServerHandle = &*server_handle.unwrap();
 
-
             // Run the tests against the server.
             let operations = test_framework::run_operations(&app_state, server_handle)?;
             server_result.operations = Some(operations);
@@ -119,7 +118,10 @@ fn create_app_state() -> Result<AppState> {
     let shared_resources = create_shared_resources();
 
     Ok(AppState {
-        logger, config, server_plugins, shared_resources
+        logger,
+        config,
+        server_plugins,
+        shared_resources,
     })
 }
 
