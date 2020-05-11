@@ -1,6 +1,6 @@
 //! TODO
 use super::{ServerHandle, ServerName, ServerPlugin};
-use anyhow::{anyhow,Context,Result};
+use anyhow::{anyhow, Context, Result};
 use std::process::Command;
 use url::Url;
 
@@ -8,14 +8,14 @@ static SERVER_NAME: &str = "HAPI FHIR JPA Server";
 
 /// The trait object for the `ServerPlugin` implementation for the HAPI FHIR JPA server.
 pub struct HapiJpaFhirServerPlugin {
-    server_name: ServerName
+    server_name: ServerName,
 }
 
 impl HapiJpaFhirServerPlugin {
     /// Constructs a new `HapiJpaFhirServerPlugin` instance.
     pub fn new() -> HapiJpaFhirServerPlugin {
         HapiJpaFhirServerPlugin {
-            server_name: SERVER_NAME.into()
+            server_name: SERVER_NAME.into(),
         }
     }
 }

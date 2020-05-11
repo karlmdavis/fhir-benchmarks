@@ -1,15 +1,18 @@
 //! Contains the code to run `/metadata` server operations.
 
-use crate::AppState;
 use crate::servers::ServerHandle;
 use crate::test_framework::ServerOperationLog;
+use crate::AppState;
 use chrono::prelude::*;
 use slog::warn;
 
 static SERVER_OP_NAME_METADATA: &str = "metadata";
 
 /// Verifies and benchmarks FHIR `/metadata` operations.
-pub fn run_operation_metadata(app_state: &AppState, server_handle: &dyn ServerHandle) -> ServerOperationLog {
+pub fn run_operation_metadata(
+    app_state: &AppState,
+    server_handle: &dyn ServerHandle,
+) -> ServerOperationLog {
     let mut server_op_log = ServerOperationLog {
         operation: SERVER_OP_NAME_METADATA.into(),
         started: Utc::now(),
