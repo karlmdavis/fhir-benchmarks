@@ -60,7 +60,7 @@ impl ServerResult {
 }
 
 /// Records the outcomes of a framework operation.
-#[derive(Deserialize, SerdeValue, Clone, Serialize)]
+#[derive(Debug, Deserialize, SerdeValue, Clone, Serialize)]
 pub struct FrameworkOperationLog {
     pub started: DateTime<Utc>,
     pub completed: DateTime<Utc>,
@@ -79,13 +79,24 @@ impl FrameworkOperationLog {
 }
 
 /// Eunmerates the success vs. failure outcomes of a framework operation.
-#[derive(Deserialize, SerdeValue, Clone, Serialize)]
+#[derive(Debug, Deserialize, SerdeValue, Clone, Serialize)]
 pub enum FrameworkOperationResult {
     /// Indicates that, as best as can be told, the framwork operation succeeded.
     Ok(),
 
     /// Indicates that a framework operation failed, and includes the related error messages.
     Errs(Vec<String>),
+}
+
+impl FrameworkOperationResult {
+    /// Returns `true` if this `FrameworkOperationResult` is `FrameworkOperationResult::Ok`, or `false`
+    /// otherwise.
+    pub fn is_ok(&self) -> bool {
+        match self {
+            FrameworkOperationResult::Ok() => true,
+            FrameworkOperationResult::Errs(_) => false,
+        }
+    }
 }
 
 /// TODO
