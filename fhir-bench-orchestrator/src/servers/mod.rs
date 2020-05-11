@@ -1,18 +1,32 @@
 //! TODO
 
 use anyhow::Result;
-use serde::Serialize;
+use serde::{Deserialize,Serialize};
 use url::Url;
 
 mod hapi_jpa;
 
 /// Represents the unique name of a FHIR server implementation.
-#[derive(Debug, PartialEq, Clone, Serialize)]
-pub struct ServerName(pub &'static str);
+///
+/// Instances should generally be constructed from `&' static str`s, like this:
+///
+/// ```
+/// # use fhir_bench_orchestrator::servers::ServerName;
+/// static SERVER_NAME: &str = "Very Awesome Server";
+/// let server_name: ServerName = SERVER_NAME.into();
+/// ```
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+pub struct ServerName(pub String);
 
 impl std::fmt::Display for ServerName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl From<&str> for ServerName {
+    fn from(server_name: &str) -> Self {
+        ServerName(server_name.to_owned())
     }
 }
 
@@ -28,7 +42,7 @@ pub trait ServerHandle {
 /// TODO
 pub trait ServerPlugin {
     /// Returns the unique `ServerName` for this `ServerPlugin`.
-    fn server_name(&self) -> &'static ServerName;
+    fn server_name(&self) -> &ServerName;
 
     /// Implementations of this method must launch an instance of the FHIR server implementation, including
     /// all necessary configuration to get the server ready for use. Implementations of this method must

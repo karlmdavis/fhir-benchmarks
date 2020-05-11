@@ -4,7 +4,7 @@
 
 name: 'CI: Rust Basics'
 
-on: [push, pull_request]
+on: [push]
 
 jobs:
   check:
@@ -43,6 +43,32 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+
+      # Pull/build the Docker containers ahead of the ITs, so that Docker Compose can pull them from the
+      # local cache, rather than having to build them from scratch.
+      #
+      # This took a while to get correct, but these are the references that helped the most:
+      # * <https://docs.docker.com/engine/reference/commandline/build/#specifying-external-cache-sources>
+      # * <https://www.docker.com/blog/faster-builds-in-compose-thanks-to-buildkit-support/>
+      # * <https://help.github.com/en/packages/using-github-packages-with-your-projects-ecosystem/configuring-docker-for-use-with-github-packages>
+      #     * Note: This one's a bit outdated, but was still helpful in explaining the general idea.
+      - name: Login Docker to GitHub Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: docker.pkg.github.com
+          username: karlmdavis
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Docker Build - hapi_fhir_jpaserver
+        env:
+          DOCKER_BUILDKIT: 1
+        run: |
+          echo 'docker pull'
+          docker pull docker.pkg.github.com/karlmdavis/fhir-benchmarks/hapi-fhir-jpaserver-start || true
+          echo 'docker build'
+          docker build -t docker.pkg.github.com/karlmdavis/fhir-benchmarks/hapi-fhir-jpaserver-start --cache-from docker.pkg.github.com/karlmdavis/fhir-benchmarks/hapi-fhir-jpaserver-start --build-arg BUILDKIT_INLINE_CACHE=1 .
+          echo 'docker push'
+          docker push docker.pkg.github.com/karlmdavis/fhir-benchmarks/hapi-fhir-jpaserver-start
+        working-directory: ./server_builds/hapi_fhir_jpaserver/
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
