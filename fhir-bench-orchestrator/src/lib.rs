@@ -12,7 +12,6 @@ use crate::test_framework::{FrameworkOperationLog, FrameworkOperationResult, Fra
 use anyhow::{anyhow, Context, Result};
 use chrono::prelude::*;
 use slog::{self, o, Drain};
-use slog_json;
 
 /// Represents the application's context/state.
 pub struct AppState {
