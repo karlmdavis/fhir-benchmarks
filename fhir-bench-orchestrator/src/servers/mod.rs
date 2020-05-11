@@ -7,6 +7,14 @@ use url::Url;
 mod hapi_jpa;
 
 /// Represents the unique name of a FHIR server implementation.
+///
+/// Instances should generally be constructed from `&' static str`s, like this:
+///
+/// ```
+/// # use fhir_bench_orchestrator::servers::ServerName;
+/// static SERVER_NAME: &str = "Very Awesome Server";
+/// let server_name: ServerName = SERVER_NAME.into();
+/// ```
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub struct ServerName(pub String);
 

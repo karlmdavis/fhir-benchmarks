@@ -111,6 +111,14 @@ pub struct ServerOperationLog {
 }
 
 /// Represents the unique name of a FHIR server operation that this framework tests.
+///
+/// Instances should generally be constructed from `&' static str`s, like this:
+///
+/// ```
+/// # use fhir_bench_orchestrator::test_framework::ServerOperationName;
+/// static SERVER_OP_NAME: &str = "Very Awesome Server";
+/// let server_op_name: ServerOperationName = SERVER_OP_NAME.into();
+/// ```
 #[derive(Deserialize, SerdeValue, Clone, Serialize)]
 pub struct ServerOperationName(pub String);
 

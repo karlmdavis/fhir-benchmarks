@@ -26,7 +26,12 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
     }
 
     fn launch(&self) -> Result<Box<dyn ServerHandle>> {
-        // Build and launch our submodule'd fork of the sample JPA server.
+        /*
+         * Build and launch our submodule'd fork of the sample JPA server.
+         *
+         * Note: The environment variables used here are required to get build caching working correctly,
+         * particularly for CI machines where the cache would otherwise be cold.
+         */
         let docker_up_output = Command::new("docker-compose")
             .args(&["up", "--detach"])
             .env("COMPOSE_DOCKER_CLI_BUILD", "1")
