@@ -5,7 +5,12 @@ authors = ["Karl M. Davis <karl@justdavis.com>"]
 edition = "2018"
 
 [dependencies]
+
+# Allow async code.
 async-std = { version = "1", features = ["attributes"] }
+async-trait = "0.1"
+
+# Used for making HTTP requests.
 url = "2"
 reqwest = { version = "0.10", features = ["blocking"] }
 

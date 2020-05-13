@@ -1,6 +1,8 @@
 //! TODO
-use super::{ServerHandle, ServerName, ServerPlugin};
+use crate::servers::{ServerHandle, ServerName, ServerPlugin};
+use crate::AppState;
 use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
 use std::process::Command;
 use url::Url;
 
@@ -20,12 +22,13 @@ impl HapiJpaFhirServerPlugin {
     }
 }
 
+#[async_trait]
 impl ServerPlugin for HapiJpaFhirServerPlugin {
     fn server_name(&self) -> &ServerName {
         &self.server_name
     }
 
-    fn launch(&self) -> Result<Box<dyn ServerHandle>> {
+    async fn launch(&self, app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
         /*
          * Build and launch our submodule'd fork of the sample JPA server.
          *
@@ -46,8 +49,51 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
             )));
         }
 
-        Ok(Box::new(HapiJpaFhirServerHandle {}))
+        // The server containers have now been started, though they're not necessarily ready yet.
+        let server_handle = HapiJpaFhirServerHandle {};
+
+        // Wait (up to a timeout) for the server to be ready.
+        wait_for_ready(app_state, &server_handle).await?;
+
+        Ok(Box::new(server_handle))
     }
+}
+
+/// Checks the specified server repeatedly to see if it is ready, up to a hardcoded timeout.
+///
+/// Parameters:
+/// * `app_state`: the application's [AppState]
+/// * `server_handle`: the server to test
+///
+/// Returns an empty [Result], where an error indicates that the server was not ready.
+async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
+    async_std::future::timeout(std::time::Duration::from_secs(10), async {
+        let mut ready = false;
+        let mut probe = None;
+
+        while !ready {
+            probe = Some(probe_for_ready(app_state, server_handle).await);
+            ready = probe.as_ref().expect("probe result missing").is_ok();
+        }
+
+        probe.expect("probe results missing")
+    })
+    .await?
+}
+
+/// Checks the specified server one time to see if it is ready.
+///
+/// Parameters:
+/// * `app_state`: the application's [AppState]
+/// * `server_handle`: the server to test
+///
+/// Returns an empty [Result], where an error indicates that the server was not ready.
+async fn probe_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
+    let probe_url = crate::test_framework::metadata::create_metadata_url(server_handle);
+    Ok(
+        crate::test_framework::metadata::run_operation_metadata_iteration(app_state, probe_url)
+            .await?,
+    )
 }
 
 /// Represents a launched instance of the HAPI FHIR JPA server.
