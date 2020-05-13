@@ -73,10 +73,7 @@ async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) 
 
         while !ready {
             probe = Some(probe_for_ready(app_state, server_handle).await);
-            ready = match probe.as_ref().expect("probe result missing") {
-                Ok(_) => true,
-                Err(_) => false,
-            };
+            ready = probe.as_ref().expect("probe result missing").is_ok();
         }
 
         probe.expect("probe results missing")

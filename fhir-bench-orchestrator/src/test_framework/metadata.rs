@@ -62,7 +62,7 @@ pub async fn run_operation_metadata(
     let mut failures = 0;
     for _ in 0..server_op_log.iterations {
         let iteration_result = run_operation_metadata_iteration(app_state, url.clone()).await;
-        if let Err(_) = iteration_result {
+        if iteration_result.is_err() {
             failures += 1;
         }
     }
