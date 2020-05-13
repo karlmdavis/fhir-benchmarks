@@ -6,7 +6,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use slog_derive::SerdeValue;
 
-mod metadata;
+pub mod metadata;
 
 /// Stores the complete set of results from a run of the framework.
 #[derive(Clone, Deserialize, SerdeValue, Serialize)]
@@ -146,13 +146,13 @@ pub struct ServerOperationMetrics {
 }
 
 /// TODO
-pub fn run_operations(
+pub async fn run_operations(
     app_state: &AppState,
     server_handle: &dyn ServerHandle,
 ) -> Result<Vec<ServerOperationLog>> {
     let mut results = vec![];
 
-    results.push(metadata::run_operation_metadata(app_state, server_handle));
+    results.push(metadata::run_operation_metadata(app_state, server_handle).await);
 
     Ok(results)
 }

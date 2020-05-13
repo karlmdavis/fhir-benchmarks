@@ -1,6 +1,8 @@
 //! TODO
 
+use crate::AppState;
 use anyhow::Result;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -30,8 +32,12 @@ impl From<&str> for ServerName {
     }
 }
 
-/// TODO
-pub trait ServerHandle {
+/// [ServerHandle] trait objects represent an instance of a FHIR server implementation that has been
+/// started. The trait's methods provide the support required to actually access/use that FHIR server.
+///
+/// Implementations are required to be [Sync](core::marker::Sync), so that they may be used in `async`
+/// contexts and otherwise borrowed across threads.
+pub trait ServerHandle: Sync {
     /// Return the base URL for the running FHIR server, e.g. `http://localhost:8080/foo/`.
     fn base_url(&self) -> Url;
 
@@ -39,8 +45,13 @@ pub trait ServerHandle {
     fn shutdown(&self) -> Result<()>;
 }
 
-/// TODO
-pub trait ServerPlugin {
+/// [ServerPlugin] implementations each represent a supported FHIR server implementation that can be started
+/// and tested.
+///
+/// Implementations are required to be [Sync](core::marker::Sync), so that they may be used in `async`
+/// contexts and otherwise borrowed across threads.
+#[async_trait]
+pub trait ServerPlugin: Sync {
     /// Returns the unique `ServerName` for this `ServerPlugin`.
     fn server_name(&self) -> &ServerName;
 
@@ -53,7 +64,10 @@ pub trait ServerPlugin {
     /// server had been launched and the `ServerHandle::shutdown()` method was called. This is essential in
     /// order to ensure that a failed launch of one server does not impair the launch and testing of other
     /// server implementations.
-    fn launch(&self) -> Result<Box<dyn ServerHandle>>;
+    ///
+    /// Parameters:
+    /// * `app_state`: the application's [AppState]
+    async fn launch(&self, app_state: &AppState) -> Result<Box<dyn ServerHandle>>;
 }
 
 /// Declares (and provides instances of) all of the `ServerPlugin` impls that are available to the

@@ -46,7 +46,7 @@ pub async fn run_bench_orchestrator() -> Result<()> {
 
         // Launch the implementation's server, etc. This will likely take a while.
         let launch_started = Utc::now();
-        let launch_result = server_plugin.launch();
+        let launch_result = server_plugin.launch(&app_state).await;
         let launch_completed = Utc::now();
 
         // Destructure the launch result into success and failure objects, so they have separate ownership.
@@ -72,7 +72,7 @@ pub async fn run_bench_orchestrator() -> Result<()> {
             let server_handle: &dyn ServerHandle = &*server_handle.unwrap();
 
             // Run the tests against the server.
-            let operations = test_framework::run_operations(&app_state, server_handle)?;
+            let operations = test_framework::run_operations(&app_state, server_handle).await?;
             server_result.operations = Some(operations);
 
             // Optionally pause for manual debugging.
