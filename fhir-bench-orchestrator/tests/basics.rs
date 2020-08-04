@@ -5,14 +5,23 @@
 //! the STDOUT & STDERR will be written out along with the failure.
 
 use assert_cmd::Command;
+use fhir_bench_orchestrator::config::{
+    ENV_KEY_CONCURRENCY_LEVELS, ENV_KEY_ITERATIONS, ENV_KEY_POPULATION_SIZE,
+};
 use fhir_bench_orchestrator::test_framework::FrameworkResults;
 
-/// Runs the benchmarks in their default configuration and verifies the results.
+/// Runs a small version of the benchmarks and verifies the results.
 #[test]
-fn default_config() {
+fn benchmark_small() {
     // Launch the benchmark suite, just as it would be from a `cargo run` in the project's top directory.
     let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
-    let output = cmd.current_dir("..").unwrap();
+    let output = cmd
+        .current_dir("..")
+        .env("RUST_BACKTRACE", "1")
+        .env(ENV_KEY_ITERATIONS, "2")
+        .env(ENV_KEY_CONCURRENCY_LEVELS, "1,2")
+        .env(ENV_KEY_POPULATION_SIZE, "10")
+        .unwrap();
 
     // We want to validate the output from STDOUT and STDERR, so we capture them to `str`s, here.
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -27,7 +36,6 @@ fn default_config() {
         "benchmark process exited with '{}'",
         output.status
     );
-    assert!(stderr.is_empty(), "benchmark process had STDERR output");
     let framework_results: FrameworkResults = serde_json::from_slice(&output.stdout).unwrap();
     assert!(
         framework_results.completed.is_some(),
@@ -59,15 +67,22 @@ fn default_config() {
         );
         if let Some(operations) = server_result.operations {
             for operation in operations {
-                // FIXME Remove this check once the framework is more solid. It's not tenable long-term as
-                // some servers will be unstable some of the time and we can't control that.
-                assert_eq!(
-                    Some(0),
-                    operation.failures,
-                    "server '{}' operation '{}' had failures",
+                assert!(
+                    operation.errors.is_empty(),
+                    "server '{}' operation '{}' had errors",
                     server_result.server,
                     operation.operation
                 );
+
+                for measurement in operation.measurements {
+                    // FIXME Remove this check once the framework is more solid. It's not tenable long-term as
+                    // some servers will be unstable some of the time and we can't control that.
+                    assert_eq!(
+                        0, measurement.iterations_failed,
+                        "server '{}' operation '{}' had failures",
+                        server_result.server, operation.operation
+                    );
+                }
             }
         }
     }

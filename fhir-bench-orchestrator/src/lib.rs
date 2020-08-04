@@ -2,11 +2,13 @@
 
 pub mod config;
 pub mod errors;
+mod sample_data;
 pub mod servers;
 pub mod test_framework;
 
 use crate::config::AppConfig;
 use crate::errors::AppError;
+use crate::sample_data::SampleData;
 use crate::servers::{ServerHandle, ServerPlugin};
 use crate::test_framework::{FrameworkOperationLog, FrameworkOperationResult, FrameworkResults};
 use anyhow::{anyhow, Context, Result};
@@ -18,7 +20,7 @@ pub struct AppState {
     pub logger: slog::Logger,
     pub config: AppConfig,
     pub server_plugins: Vec<Box<dyn ServerPlugin>>,
-    pub shared_resources: (),
+    pub sample_data: SampleData,
 }
 
 /// The library crate's primary entry point: this does all the things.
@@ -35,7 +37,7 @@ pub async fn run_bench_orchestrator() -> Result<()> {
     verify_prereqs()?;
 
     // Test each selected FHIR server implementation.
-    let mut framework_results = FrameworkResults::new(&app_state.server_plugins);
+    let mut framework_results = FrameworkResults::new(&app_state.config, &app_state.server_plugins);
     for server_plugin in &app_state.server_plugins {
         let server_plugin: &dyn ServerPlugin = &**server_plugin;
 
@@ -72,7 +74,14 @@ pub async fn run_bench_orchestrator() -> Result<()> {
             let server_handle: &dyn ServerHandle = &*server_handle.unwrap();
 
             // Run the tests against the server.
-            let operations = test_framework::run_operations(&app_state, server_handle).await?;
+            let operations = test_framework::run_operations(&app_state, server_handle)
+                .await
+                .with_context(|| {
+                    format!(
+                        "Error when running operations for server '{}'.",
+                        server_plugin.server_name()
+                    )
+                })?;
             server_result.operations = Some(operations);
 
             // Optionally pause for manual debugging.
@@ -101,7 +110,6 @@ pub async fn run_bench_orchestrator() -> Result<()> {
 }
 
 /// Initializes the [AppState].
-#[allow(clippy::let_unit_value)]
 fn create_app_state() -> Result<AppState> {
     // Create the root slog logger.
     let logger = create_logger_root();
@@ -113,14 +121,14 @@ fn create_app_state() -> Result<AppState> {
     let server_plugins: Vec<Box<dyn ServerPlugin>> = servers::create_server_plugins()?;
 
     // Setup all global/shared resources.
-    // TODO: Remove `allow` on method once this actually does something.
-    let shared_resources = create_shared_resources();
+    let sample_data = sample_data::generate_data(&logger, &config)
+        .context("Error when generating sample data.")?;
 
     Ok(AppState {
         logger,
         config,
         server_plugins,
-        shared_resources,
+        sample_data,
     })
 }
 
@@ -152,11 +160,6 @@ fn verify_prereqs() -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Initialize the application resources (e.g. test data) that will be used across projects.
-fn create_shared_resources() {
-    // TODO this'll be stuff like the synthetic data and all that
 }
 
 /// Output all of the results.
