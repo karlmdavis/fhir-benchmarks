@@ -95,30 +95,6 @@ async fn benchmark_operation_metadata_for_users(
         .buffer_unordered(usize::try_from(concurrent_users).unwrap());
 
     /*
-     * FIXME Remove this commented-out code in next commit.
-     *
-     * I like the `parallel_stream` API more, but had lifetime issues using it (with `app_state`) that I
-     * don't know how to resolve.
-     */
-    /*
-     * We want a stream of async operations, executed concurrently (up to a limit), where we'll sum up the failures.
-     */
-    // let operations = (0..app_state.config.iterations).collect::<Vec<u32>>()
-    //     .into_par_stream().limit(usize::try_from(concurrent_users).unwrap())
-    //     .map(|_| async {
-    //         match run_operation_metadata_iteration(app_state, url.clone()).await {
-    //             Ok(_) => 0u32,
-    //             Err(_) => 1u32,
-    //         }
-    //         });
-    // let mut iterations_failed: u32 = 0;
-    // // Note: could have trouble here as this should have higher priority than async ops but doesn't
-    // while let Some(n) = operations.next().await {
-    //     iterations_failed += n;
-    // }
-    //let foo = parallel_stream::from_stream(stream::from_iter(0..app_state.config.iterations)).limit(2);
-
-    /*
      * Kick off the execution of the stream, summing up all of the failures that are encountered.
      */
     let started = Utc::now();
