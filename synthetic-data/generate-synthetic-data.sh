@@ -38,7 +38,9 @@ export DOCKER_BUILDKIT=1
 docker build --file ./Dockerfile.synthea --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t "${IMAGE_TAG}" .
 
 # Run Synthea, with the specified options.
-docker run --rm --mount source="$(pwd)/target/",target="/synthea/target/",type=bind "${IMAGE_TAG}" \
+target="$(pwd)/target"
+if [[ ! -d "${target}" ]]; then mkdir "${target}"; fi
+docker run --rm --mount source="${target}",target="/synthea/target/",type=bind "${IMAGE_TAG}" \
   -s "${SEED}" \
   -cs "${SEED}" \
   -p "${populationSize}"

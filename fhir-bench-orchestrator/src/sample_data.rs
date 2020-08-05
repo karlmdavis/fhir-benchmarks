@@ -90,7 +90,10 @@ pub fn generate_data(logger: &Logger, config: &AppConfig) -> Result<SampleData> 
     }
 
     // Remove any/all old data that exists, since it doesn't match the config needed.
-    std::fs::remove_dir_all(data_dir)?;
+    if data_dir.exists() {
+        std::fs::remove_dir_all(data_dir)
+            .with_context(|| format!("Unable to find sample data directory: '{:?}", data_dir))?;
+    }
 
     /*
      * Build and run the Docker-ized version of Synthea.
