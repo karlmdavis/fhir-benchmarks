@@ -3,6 +3,7 @@
 # Configure script to go boom immediately if a command fails.
 set -e
 set -o pipefail
+set -x
 
 # Constants.
 IMAGE_TAG="synthea"
