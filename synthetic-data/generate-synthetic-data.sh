@@ -5,7 +5,7 @@ set -e
 set -o pipefail
 
 # Constants.
-IMAGE_TAG="benchmarks/synthea"
+IMAGE_TAG="synthea"
 SEED=42
 
 # Use GNU getopt to parse the options passed to this script.
@@ -35,7 +35,7 @@ if [[ -z "${populationSize}" ]]; then >&2 echo 'The -p option for desired popula
 export DOCKER_BUILDKIT=1
 
 # Build the Docker image for Synthea.
-docker build --file ./Dockerfile.synthea --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t "${IMAGE_TAG}" .
+docker build --file ./Dockerfile.synthea --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t "${IMAGE_TAG}" --cache-from docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea --build-arg BUILDKIT_INLINE_CACHE=1 .
 
 # Run Synthea, with the specified options.
 target="$(pwd)/target"

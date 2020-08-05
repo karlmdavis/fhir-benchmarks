@@ -105,6 +105,17 @@ jobs:
           echo 'docker push'
           docker push docker.pkg.github.com/karlmdavis/fhir-benchmarks/hapi-fhir-jpaserver-start
         working-directory: ./server_builds/hapi_fhir_jpaserver/
+      - name: Run Docker Build - synthea
+        env:
+          DOCKER_BUILDKIT: 1
+        run: |
+          echo 'docker pull'
+          docker pull docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea || true
+          echo 'docker build'
+          docker build -t docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea --cache-from docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea --build-arg BUILDKIT_INLINE_CACHE=1 .
+          echo 'docker push'
+          docker push docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea
+        working-directory: ./synthetic-data
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
