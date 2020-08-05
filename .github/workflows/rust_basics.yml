@@ -112,7 +112,7 @@ jobs:
           echo 'docker pull'
           docker pull docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea || true
           echo 'docker build'
-          docker build -t docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea --cache-from docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea --build-arg BUILDKIT_INLINE_CACHE=1 .
+          docker build --file ./Dockerfile.synthea --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea --cache-from docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea --build-arg BUILDKIT_INLINE_CACHE=1 .
           echo 'docker push'
           docker push docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea
         working-directory: ./synthetic-data
