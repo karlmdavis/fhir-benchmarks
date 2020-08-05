@@ -47,7 +47,7 @@ impl AppConfig {
             env::var(ENV_KEY_CONCURRENCY_LEVELS).or_else(|_| Ok(String::from("1,10")));
         let concurrency_levels: std::result::Result<Vec<u32>, _> = concurrency_levels
             .context(format!("Unable to read {}.", ENV_KEY_CONCURRENCY_LEVELS))?
-            .split(",")
+            .split(',')
             .map(str::parse::<u32>)
             .collect();
         let concurrency_levels = concurrency_levels
