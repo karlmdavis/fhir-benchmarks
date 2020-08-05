@@ -149,7 +149,7 @@ impl ServerOperationLog {
     /// Constructs a new [ServerOperationLog] for the specified [ServerOperationName].
     pub fn new(operation: ServerOperationName) -> ServerOperationLog {
         ServerOperationLog {
-            operation: operation,
+            operation,
             errors: vec![],
             measurements: vec![],
         }
