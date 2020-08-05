@@ -163,7 +163,8 @@ fn find_sample_data(data_dir: PathBuf) -> Result<SampleData> {
 
     Ok(SampleData {
         hospitals: hospitals.ok_or_else(|| anyhow!("No hospitalInformation output file."))?,
-        practitioners: practitioners.ok_or_else(|| anyhow!("No practitionerInformation output file."))?,
+        practitioners: practitioners
+            .ok_or_else(|| anyhow!("No practitionerInformation output file."))?,
         patients,
     })
 }
