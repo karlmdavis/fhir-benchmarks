@@ -19,10 +19,12 @@ pub struct SampleData {
     /// Synthea will produce a single FHIR `Bundle` JSON file for all `Practitioner` resources. The size of
     /// this file will vary relative to the patient population size: for 100 patients it will be around
     /// 200KB (if we assume a linear relationship it would be around 2GB for a million patients).
+    #[allow(dead_code)]
     practitioners: PathBuf,
 
     /// Synthea will generate a separate FHIR `Bundle` JSON file for each patient. These files vary in size
     /// quite a bit but can be up to several megabytes large, each.
+    #[allow(dead_code)]
     patients: Vec<PathBuf>,
 }
 
