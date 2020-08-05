@@ -80,7 +80,7 @@ async fn benchmark_operation_metadata_for_users(
      * Build an iterator: One element for each iteration to run, run the operation for each iteration, and
      * count the iterations that failed.
      */
-    let operations = (0..app_state.config.iterations).into_iter().map(|_| async {
+    let operations = (0..app_state.config.iterations).map(|_| async {
         match run_operation_metadata(app_state, url.clone()).await {
             Ok(_) => 0u32,
             Err(_) => 1u32,
