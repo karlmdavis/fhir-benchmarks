@@ -1,11 +1,32 @@
 //! Application configuration.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use slog_derive::SerdeValue;
 use std::env;
+use std::path::PathBuf;
+
+/// The environment variable key for the [AppConfig.iterations] setting.
+pub const ENV_KEY_ITERATIONS: &str = "FHIR_BENCH_ITERATIONS";
+
+/// The environment variable key for the [AppConfig.concurrency_levels] setting.
+pub const ENV_KEY_CONCURRENCY_LEVELS: &str = "FHIR_BENCH_CONCURRENCY_LEVELS";
+
+/// The environment variable key for the [AppConfig.population_size] setting.
+pub const ENV_KEY_POPULATION_SIZE: &str = "FHIR_BENCH_POPULATION_SIZE";
 
 /// Represents the application's configuration.
+#[derive(Clone, Deserialize, SerdeValue, Serialize)]
 pub struct AppConfig {
+    /// The maximum number of iterations to exercise each operation for, during a benchmark run.
     pub iterations: u32,
+
+    /// The concurrency level(s) to test at. Each operation will be tested with an attempt to model each
+    /// specified number of concurrent users.
+    pub concurrency_levels: Vec<u32>,
+
+    /// The maximum synthetic patient population size to benchmark with.
+    pub population_size: u32,
 }
 
 impl AppConfig {
@@ -13,10 +34,42 @@ impl AppConfig {
         // If present, load environment variables from a `.env` file in the working directory.
         dotenv::dotenv().ok();
 
-        // Parse the configurable entries.
+        // Parse iterations.
         let iterations: std::result::Result<String, std::env::VarError> =
-            env::var("FHIR_BENCH_ITERATIONS").or_else(|_| Ok(String::from("1000")));
-        let iterations: u32 = iterations?.parse()?;
-        Ok(AppConfig { iterations })
+            env::var(ENV_KEY_ITERATIONS).or_else(|_| Ok(String::from("1000")));
+        let iterations: u32 = iterations
+            .context(format!("Unable to read {}.", ENV_KEY_ITERATIONS))?
+            .parse()
+            .context(format!("Unable to parse {}.", ENV_KEY_ITERATIONS))?;
+
+        // Parse concurrency_levels.
+        let concurrency_levels: std::result::Result<String, std::env::VarError> =
+            env::var(ENV_KEY_CONCURRENCY_LEVELS).or_else(|_| Ok(String::from("1,10")));
+        let concurrency_levels: std::result::Result<Vec<u32>, _> = concurrency_levels
+            .context(format!("Unable to read {}.", ENV_KEY_CONCURRENCY_LEVELS))?
+            .split(',')
+            .map(str::parse::<u32>)
+            .collect();
+        let concurrency_levels = concurrency_levels
+            .context(format!("Unable to parse {}.", ENV_KEY_CONCURRENCY_LEVELS))?;
+
+        // Parse population_size.
+        let population_size: std::result::Result<String, std::env::VarError> =
+            env::var(ENV_KEY_POPULATION_SIZE).or_else(|_| Ok(String::from("100")));
+        let population_size: u32 = population_size
+            .context(format!("Unable to read {}.", ENV_KEY_POPULATION_SIZE))?
+            .parse()
+            .context(format!("Unable to parse {}.", ENV_KEY_POPULATION_SIZE))?;
+
+        Ok(AppConfig {
+            iterations,
+            concurrency_levels,
+            population_size,
+        })
+    }
+
+    /// Returns the root directory for the benchmarks project; the Git repo's top-level directory.
+    pub fn benchmark_dir(&self) -> Result<PathBuf> {
+        std::env::current_dir().context("unable to retrieve current directory")
     }
 }

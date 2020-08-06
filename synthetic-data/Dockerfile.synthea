@@ -1,0 +1,45 @@
+# Synthea should support more recent JDK releases, but all the docs still mention 8, so we use that here.
+FROM openjdk:8-alpine
+
+# Install pre-reqs.
+RUN apk add --no-cache wget
+
+# Configure directories.
+RUN mkdir /synthea \
+  && mkdir /synthea/bin \
+  && mkdir /synthea/target
+WORKDIR /synthea/bin
+
+# Configure user & permissions.
+ARG UID
+ARG GID
+ENV USER=synthea
+RUN \
+  addgroup \
+    --gid "$GID" \
+    "$USER" \
+  && \
+  adduser \
+    --disabled-password \
+    --gecos "" \
+    --ingroup "$USER" \
+    --no-create-home \
+    --uid "$UID" \
+    "$USER"
+RUN \
+  chown -R synthea:synthea /synthea \
+  && \
+  chmod -R o+r /synthea
+USER "$USER"
+
+# Download the Synthea binary distribution. The Synthea CLI builds aren't really versioned, as such; they're
+# published by committing a new cut of the same filename to the repository's `gh-pages` branch. To ensure
+# stability, we grab a specific commit of that branch. A bit hacky, but it works.
+RUN \
+  wget -q https://github.com/synthetichealth/synthea/raw/1d8cdbbf0f02e3f10c00460aa28b59f0495d58cc/build/libs/synthea-with-dependencies.jar \
+  && \
+  chmod o+r synthea-with-dependencies.jar
+WORKDIR /synthea/target
+
+# Run the Synthea CLI binary (user-specified args will be appended to those here).
+ENTRYPOINT ["java", "-jar", "/synthea/bin/synthea-with-dependencies.jar", "--exporter.baseDirectory", "/synthea/target/"]
