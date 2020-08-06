@@ -26,13 +26,19 @@ RUN \
     --no-create-home \
     --uid "$UID" \
     "$USER"
-RUN chown -R synthea:synthea /synthea
+RUN \
+  chown -R synthea:synthea /synthea \
+  && \
+  chmod -R o+r /synthea
 USER "$USER"
 
 # Download the Synthea binary distribution. The Synthea CLI builds aren't really versioned, as such; they're
 # published by committing a new cut of the same filename to the repository's `gh-pages` branch. To ensure
 # stability, we grab a specific commit of that branch. A bit hacky, but it works.
-RUN wget -q https://github.com/synthetichealth/synthea/raw/1d8cdbbf0f02e3f10c00460aa28b59f0495d58cc/build/libs/synthea-with-dependencies.jar
+RUN \
+  wget -q https://github.com/synthetichealth/synthea/raw/1d8cdbbf0f02e3f10c00460aa28b59f0495d58cc/build/libs/synthea-with-dependencies.jar \
+  && \
+  chmod o+r synthea-with-dependencies.jar
 WORKDIR /synthea/target
 
 # Run the Synthea CLI binary (user-specified args will be appended to those here).
