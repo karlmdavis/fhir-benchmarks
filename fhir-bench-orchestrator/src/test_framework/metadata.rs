@@ -53,7 +53,7 @@ async fn run_operation_metadata(app_state: &AppState, url: Url) -> Result<()> {
 
     let mut response = async_h1::connect(stream.clone(), request)
         .await
-        .or_else(|err| Err(anyhow!(format!("{}", err))))?;
+        .map_err(|err| anyhow!(format!("{}", err)))?;
     trace!(app_state.logger, "GET '{}': complete.", url);
 
     let response_status = response.status();
@@ -61,7 +61,7 @@ async fn run_operation_metadata(app_state: &AppState, url: Url) -> Result<()> {
         let response_body = response
             .body_string()
             .await
-            .or_else(|err| Err(anyhow!(format!("{}", err))))?;
+            .map_err(|err| anyhow!(format!("{}", err)))?;
         return Err(anyhow!(
             "The GET /metadata to '{}' failed, with status '{}' and body: '{}'",
             &url,

@@ -272,7 +272,7 @@ async fn run_operation_post_org(
 
     let mut response = async_h1::connect(stream.clone(), request)
         .await
-        .or_else(|err| Err(anyhow!(format!("{}", err))))?;
+        .map_err(|err| anyhow!(format!("{}", err)))?;
     trace!(app_state.logger, "POST '{}': complete.", url);
 
     let response_status = response.status();
@@ -280,7 +280,7 @@ async fn run_operation_post_org(
         let response_body = response
             .body_string()
             .await
-            .or_else(|err| Err(anyhow!(format!("{}", err))))?;
+            .map_err(|err| anyhow!(format!("{}", err)))?;
         return Err(anyhow!(
             "The POST to '{}' failed for Organization '{}', with status '{}' and body: '{}'",
             &url,
