@@ -5,12 +5,14 @@ use crate::servers::ServerHandle;
 use crate::test_framework::{ServerOperationLog, ServerOperationMeasurement};
 use crate::AppState;
 use anyhow::{anyhow, Context, Result};
+use async_std::future::timeout;
+use async_std::net::TcpStream;
 use chrono::prelude::*;
 use chrono::Duration;
 use futures::prelude::*;
-use slog::{trace, warn};
+use http_types::{Method, Request, Url};
+use slog::{info, trace, warn};
 use std::convert::TryFrom;
-use url::Url;
 
 static SERVER_OP_NAME_POST_ORG: &str = "POST /Organization";
 
@@ -59,10 +61,9 @@ async fn benchmark_post_org_for_users(
     concurrent_users: u32,
 ) -> ServerOperationMeasurement {
     // Setup the results tracking state.
-    trace!(
+    info!(
         app_state.logger,
-        "Benchmarking POST /Organization: '{}' concurrent users: starting...",
-        concurrent_users
+        "Benchmarking POST /Organization: '{}' concurrent users: starting...", concurrent_users
     );
     let started = Utc::now();
     let mut execution_duration: Duration = Duration::seconds(0);
@@ -136,7 +137,7 @@ async fn benchmark_post_org_for_users(
                 sample_data[0].clone(),
             );
         }
-        trace!(
+        info!(
             app_state.logger,
             "Benchmarking POST /Organization: '{}' concurrent users: group '{}/{}' with '{}' iterations: starting...",
             concurrent_users, group_index + 1, groups, group_iterations
@@ -153,10 +154,10 @@ async fn benchmark_post_org_for_users(
         .await;
 
         let group_completed = Utc::now();
-        trace!(
+        info!(
             app_state.logger,
             "Benchmarking POST /Organization: '{}' concurrent users: group '{}/{}' with '{}' iterations: completed.",
-            concurrent_users, group_index, groups, group_iterations
+            concurrent_users, group_index + 1, groups, group_iterations
         );
         iterations_attempted += group_iterations;
         iterations_failed += group_iterations_failed;
@@ -164,10 +165,9 @@ async fn benchmark_post_org_for_users(
     }
 
     let completed = Utc::now();
-    trace!(
+    info!(
         app_state.logger,
-        "Benchmarking POST /Organization: '{}' concurrent users: completed.",
-        concurrent_users
+        "Benchmarking POST /Organization: '{}' concurrent users: completed.", concurrent_users
     );
 
     ServerOperationMeasurement {
@@ -205,9 +205,16 @@ async fn benchmark_post_org_for_users_and_data(
      * count the iterations that failed.
      */
     let operations = sample_data.into_iter().map(|org| async {
-        match run_operation_post_org(app_state, url.clone(), org).await {
+        let operation = run_operation_post_org(app_state, url.clone(), org);
+        let operation = timeout(
+            app_state.config.operation_timeout.to_std().expect("unable to convert Duration"),
+            operation);
+        match operation.await {
             Ok(_) => 0u32,
-            Err(_) => 1u32,
+            Err(err) => {
+                warn!(app_state.logger, "POST /Organization failed"; "error" => format!("{:?}", err));
+                1u32
+            },
         }
     });
 
@@ -257,29 +264,29 @@ async fn run_operation_post_org(
     let org_string = serde_json::to_string(&org)?;
     let org_id = org.get("id").expect("Organization missing ID.").to_string();
 
-    // FIXME probably want to switch to something that supports std_async here
-    let client = reqwest::blocking::Client::new();
-    let response = client
-        .post(url.clone())
-        .header("Content-Type", "application/fhir+json")
-        .body(org_string)
-        .send()
-        .with_context(|| {
-            format!(
-                "The POST to '{}' failed for Organization '{}'.",
-                url, org_id
-            )
-        })?;
+    trace!(app_state.logger, "POST '{}': starting...", url);
+    let stream = TcpStream::connect(&*url.socket_addrs(|| None).unwrap()).await?;
+    let mut request = Request::new(Method::Post, url.clone());
+    request.insert_header("Content-Type", "application/fhir+json");
+    request.set_body(org_string);
+
+    let mut response = async_h1::connect(stream.clone(), request)
+        .await
+        .or_else(|err| Err(anyhow!(format!("{}", err))))?;
+    trace!(app_state.logger, "POST '{}': complete.", url);
 
     let response_status = response.status();
     if !response_status.is_success() {
-        let response_body = response.text()?;
-        warn!(app_state.logger, "POST failed"; "url" => url.as_str(), "resource_id" => &org_id, "status" => response_status.as_str(), "response_body" => response_body);
+        let response_body = response
+            .body_string()
+            .await
+            .or_else(|err| Err(anyhow!(format!("{}", err))))?;
         return Err(anyhow!(
-            "The POST to '{}' failed for Organization '{}', with status '{}'.",
+            "The POST to '{}' failed for Organization '{}', with status '{}' and body: '{}'",
             &url,
             &org_id,
-            response_status
+            response_status,
+            response_body
         ));
     }
     // TODO more checks needed

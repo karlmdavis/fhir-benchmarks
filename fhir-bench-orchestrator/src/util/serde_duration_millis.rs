@@ -1,13 +1,11 @@
-//! A Serde serializer/deserializer for chrono [Duration] instances.
+//! A Serde serializer/deserializer for chrono [Duration] instances that uses ISO-8601 formatting.
 
 use chrono::Duration;
-use lazy_static::lazy_static;
-use regex::Regex;
 use serde::{self, Deserialize, Deserializer, Serializer};
 
-pub const NANOS_PER_SEC: i64 = 1_000_000_000;
-
-/// Converts [Duration] instances to ISO-8601 string values, for use in JSON.
+/// Converts [Duration] instances to millisecond numeric values, for use in JSON. This conversion
+/// is lossy: any fractional milliseconds in the [Duration] (i.e. extra nanoseconds) will be
+/// discarded.
 ///
 /// Parameters:
 /// * `duration`: the [Duration] instance to be serialized
@@ -18,13 +16,11 @@ pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Erro
 where
     S: Serializer,
 {
-    let seconds = duration.num_seconds();
-    let nanoseconds = duration.num_nanoseconds().unwrap_or(0) - (seconds * NANOS_PER_SEC);
-    let s = format!("PT{}.{}S", seconds, nanoseconds);
-    serializer.serialize_str(&s)
+    let milliseconds = duration.num_milliseconds();
+    serializer.serialize_i64(milliseconds)
 }
 
-/// Converts serialized ISO-8601 duration JSON strings back to [Duration] instances.
+/// Converts serialized JSON milliseconds back to [Duration] instances.
 ///
 /// Parameters:
 /// * `deserializer`: the Serde [Deserializer] to use
@@ -34,28 +30,8 @@ pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let text = String::deserialize(deserializer)?;
-
-    lazy_static! {
-        static ref REGEX_DURATION: Regex = Regex::new("PT(\\d+)\\.(\\d+)S").unwrap();
-    }
-    match REGEX_DURATION.captures(&text) {
-        Some(capture) => {
-            let secs = capture[1]
-                .parse::<i64>()
-                .map_err(serde::de::Error::custom)?;
-            let nanos = capture[2]
-                .parse::<i64>()
-                .map_err(serde::de::Error::custom)?;
-            let nanos_total = (secs * NANOS_PER_SEC) + nanos;
-
-            Ok(Duration::nanoseconds(nanos_total))
-        }
-        None => Err(serde::de::Error::invalid_value(
-            serde::de::Unexpected::Str(&text),
-            &"a value in the format: 'PT123.456S'",
-        )),
-    }
+    let milliseconds = i64::deserialize(deserializer)?;
+    Ok(Duration::milliseconds(milliseconds))
 }
 
 /// Unit tests for the [Duration] serializer & deserialzer.
@@ -76,11 +52,11 @@ mod tests {
     #[test]
     fn serialize() {
         let expected = json!({
-            "duration": "PT1.234S",
+            "duration": 1000,
         });
         let expected = serde_json::to_string(&expected).unwrap();
         let actual = DurationStruct {
-            duration: Duration::nanoseconds(super::NANOS_PER_SEC + 234),
+            duration: Duration::milliseconds(1000),
         };
         let actual = serde_json::to_string(&actual).unwrap();
         assert_eq!(expected, actual);
@@ -90,10 +66,10 @@ mod tests {
     #[test]
     fn deserialize() {
         let expected = DurationStruct {
-            duration: Duration::nanoseconds(super::NANOS_PER_SEC + 234),
+            duration: Duration::milliseconds(1000),
         };
         let actual = json!({
-            "duration": "PT1.234S",
+            "duration": 1000,
         });
         let actual = serde_json::to_string(&actual).unwrap();
         let actual: DurationStruct = serde_json::from_str(&actual).unwrap();

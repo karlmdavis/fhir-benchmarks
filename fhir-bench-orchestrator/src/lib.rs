@@ -5,6 +5,7 @@ pub mod errors;
 mod sample_data;
 pub mod servers;
 pub mod test_framework;
+mod util;
 
 use crate::config::AppConfig;
 use crate::errors::AppError;
@@ -13,7 +14,7 @@ use crate::servers::{ServerHandle, ServerPlugin};
 use crate::test_framework::{FrameworkOperationLog, FrameworkOperationResult, FrameworkResults};
 use anyhow::{anyhow, Context, Result};
 use chrono::prelude::*;
-use slog::{self, o, Drain};
+use slog::{self, info, o, Drain};
 
 /// Represents the application's context/state.
 pub struct AppState {
@@ -47,9 +48,19 @@ pub async fn run_bench_orchestrator() -> Result<()> {
             .ok_or_else(|| AppError::UnknownServerError(server_plugin.server_name().clone()))?;
 
         // Launch the implementation's server, etc. This will likely take a while.
+        info!(
+            app_state.logger,
+            "'{}': launching...",
+            server_plugin.server_name()
+        );
         let launch_started = Utc::now();
         let launch_result = server_plugin.launch(&app_state).await;
         let launch_completed = Utc::now();
+        info!(
+            app_state.logger,
+            "'{}': launched.",
+            server_plugin.server_name()
+        );
 
         // Destructure the launch result into success and failure objects, so they have separate ownership.
         let (server_handle, launch_error) = match launch_result {
@@ -88,9 +99,19 @@ pub async fn run_bench_orchestrator() -> Result<()> {
             // std::io::stdin().read_line(&mut String::new()).unwrap();
 
             // Shutdown and cleanup the server and its resources.
+            info!(
+                app_state.logger,
+                "'{}': shutting down...",
+                server_plugin.server_name()
+            );
             let shutdown_started = Utc::now();
             let shutdown_result = server_handle.shutdown();
             let shutdown_completed = Utc::now();
+            info!(
+                app_state.logger,
+                "'{}': shut down.",
+                server_plugin.server_name()
+            );
             server_result.shutdown = Some(FrameworkOperationLog {
                 started: shutdown_started,
                 completed: shutdown_completed,
