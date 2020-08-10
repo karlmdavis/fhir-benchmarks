@@ -1,6 +1,8 @@
 //! Application configuration.
 
+use crate::util::serde_duration_millis;
 use anyhow::{Context, Result};
+use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use slog_derive::SerdeValue;
 use std::env;
@@ -8,6 +10,9 @@ use std::path::PathBuf;
 
 /// The environment variable key for the [AppConfig.iterations] setting.
 pub const ENV_KEY_ITERATIONS: &str = "FHIR_BENCH_ITERATIONS";
+
+/// The environment variable key for the [AppConfig.operation_timeout] setting (in milliseconds).
+pub const ENV_KEY_OPERATION_TIMEOUT: &str = "FHIR_BENCH_OPERATION_TIMEOUT_MS";
 
 /// The environment variable key for the [AppConfig.concurrency_levels] setting.
 pub const ENV_KEY_CONCURRENCY_LEVELS: &str = "FHIR_BENCH_CONCURRENCY_LEVELS";
@@ -20,6 +25,10 @@ pub const ENV_KEY_POPULATION_SIZE: &str = "FHIR_BENCH_POPULATION_SIZE";
 pub struct AppConfig {
     /// The maximum number of iterations to exercise each operation for, during a benchmark run.
     pub iterations: u32,
+
+    /// The maximum amount of time to let any individual operation being benchmarked run for.
+    #[serde(with = "serde_duration_millis")]
+    pub operation_timeout: Duration,
 
     /// The concurrency level(s) to test at. Each operation will be tested with an attempt to model each
     /// specified number of concurrent users.
@@ -42,6 +51,15 @@ impl AppConfig {
             .parse()
             .context(format!("Unable to parse {}.", ENV_KEY_ITERATIONS))?;
 
+        // Parse operation_timeout.
+        let operation_timeout: std::result::Result<String, std::env::VarError> =
+            env::var(ENV_KEY_OPERATION_TIMEOUT).or_else(|_| Ok(String::from("10000")));
+        let operation_timeout: u32 = operation_timeout
+            .context(format!("Unable to read {}.", ENV_KEY_OPERATION_TIMEOUT))?
+            .parse()
+            .context(format!("Unable to parse {}.", ENV_KEY_OPERATION_TIMEOUT))?;
+        let operation_timeout = Duration::milliseconds(operation_timeout as i64);
+
         // Parse concurrency_levels.
         let concurrency_levels: std::result::Result<String, std::env::VarError> =
             env::var(ENV_KEY_CONCURRENCY_LEVELS).or_else(|_| Ok(String::from("1,10")));
@@ -63,6 +81,7 @@ impl AppConfig {
 
         Ok(AppConfig {
             iterations,
+            operation_timeout,
             concurrency_levels,
             population_size,
         })

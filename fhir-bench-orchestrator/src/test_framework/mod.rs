@@ -2,6 +2,7 @@
 
 use crate::config::AppConfig;
 use crate::servers::{ServerHandle, ServerName, ServerPlugin};
+use crate::util::serde_duration_iso8601;
 use crate::AppState;
 use anyhow::Result;
 use chrono::prelude::*;
@@ -12,7 +13,6 @@ use slog_derive::SerdeValue;
 
 pub mod metadata;
 mod post_org;
-mod serde_duration;
 
 /// Stores the complete set of results from a run of the framework.
 #[derive(Clone, Deserialize, SerdeValue, Serialize)]
@@ -171,7 +171,7 @@ pub struct ServerOperationMeasurement {
     /// How long this measurement attempt spent running iterations, which excludes more general setup work,
     /// such as pushing the data to test against to the server implementation. (It will still include some
     /// miscellaneous overhead from each iteration.)
-    #[serde(with = "serde_duration")]
+    #[serde(with = "serde_duration_iso8601")]
     pub execution_duration: Duration,
 
     /// The number of iterations that failed to produce the expected result.
@@ -252,6 +252,7 @@ mod tests {
         FrameworkOperationLog, FrameworkOperationResult, FrameworkResults, ServerOperationLog,
         ServerOperationMeasurement, ServerOperationMetrics, ServerResult,
     };
+    use crate::util::serde_duration_iso8601;
     use chrono::prelude::*;
     use chrono::Duration;
     use rust_decimal::Decimal;
@@ -346,7 +347,7 @@ mod tests {
             concurrent_users: 10,
             started: Utc.ymd(2020, 1, 1).and_hms(15, 0, 0),
             completed: Utc.ymd(2020, 1, 1).and_hms(16, 0, 0),
-            execution_duration: Duration::nanoseconds(super::serde_duration::NANOS_PER_SEC + 234),
+            execution_duration: Duration::nanoseconds(serde_duration_iso8601::NANOS_PER_SEC + 234),
             iterations_failed: 1,
             iterations_skipped: 0,
             metrics: None,
@@ -363,6 +364,7 @@ mod tests {
             "completed": "2020-01-01T19:00:00Z",
             "config": {
                 "iterations": 1,
+                "operation_timeout": 1000,
                 "concurrency_levels": [1, 10],
                 "population_size": 1,
             },
@@ -415,6 +417,7 @@ mod tests {
             completed: Some(Utc.ymd(2020, 1, 1).and_hms(19, 0, 0)),
             config: AppConfig {
                 iterations: 1,
+                operation_timeout: Duration::milliseconds(1000),
                 concurrency_levels: vec![1, 10],
                 population_size: 1,
             },
@@ -433,7 +436,7 @@ mod tests {
                         started: Utc.ymd(2020, 1, 1).and_hms(15, 0, 0),
                         completed: Utc.ymd(2020, 1, 1).and_hms(16, 0, 0),
                         execution_duration: Duration::nanoseconds(
-                            super::serde_duration::NANOS_PER_SEC + 234,
+                            serde_duration_iso8601::NANOS_PER_SEC + 234,
                         ),
                         iterations_failed: 1,
                         iterations_skipped: 0,

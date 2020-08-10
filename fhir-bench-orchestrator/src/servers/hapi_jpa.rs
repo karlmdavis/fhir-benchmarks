@@ -95,7 +95,7 @@ async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) 
 /// Returns an empty [Result], where an error indicates that the server was not ready.
 async fn probe_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
     let probe_url = crate::test_framework::metadata::create_metadata_url(server_handle);
-    Ok(crate::test_framework::metadata::run_operation_metadata(app_state, probe_url).await?)
+    Ok(crate::test_framework::metadata::run_operation_metadata_safe(app_state, probe_url).await?)
 }
 
 /// Represents a launched instance of the HAPI FHIR JPA server.
