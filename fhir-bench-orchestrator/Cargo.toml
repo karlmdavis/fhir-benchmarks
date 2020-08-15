@@ -49,5 +49,10 @@ chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 lazy_static = "1"
 
+# Calculate and model performance metrics.
+hdrhistogram = "7"
+base64 = "0.12"
+flate2 = "1.0"
+
 # Used in integration tests, to run binaries and verify results.
 assert_cmd = "1"

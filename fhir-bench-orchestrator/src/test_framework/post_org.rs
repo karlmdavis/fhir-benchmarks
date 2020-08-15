@@ -1,6 +1,10 @@
 //! Provides the `benchmark_post_org(...)` method for benchmarking FHIR `POST /Organization`
 //! operations.
 
+use super::{
+    ServerOperationIterationFailed, ServerOperationIterationStarting,
+    ServerOperationIterationState, ServerOperationIterationSucceeded, ServerOperationMetrics,
+};
 use crate::servers::ServerHandle;
 use crate::test_framework::{ServerOperationLog, ServerOperationMeasurement};
 use crate::AppState;
@@ -10,6 +14,7 @@ use async_std::net::TcpStream;
 use chrono::prelude::*;
 use chrono::Duration;
 use futures::prelude::*;
+use hdrhistogram::Histogram;
 use http_types::{Method, Request, Url};
 use slog::{info, trace, warn};
 use std::convert::TryFrom;
@@ -61,6 +66,7 @@ async fn benchmark_post_org_for_users(
     concurrent_users: u32,
 ) -> ServerOperationMeasurement {
     // Setup the results tracking state.
+    let mut histogram = Histogram::<u64>::new(3).expect("Unable to construct histogram.");
     info!(
         app_state.logger,
         "Benchmarking POST /Organization: '{}' concurrent users: starting...", concurrent_users
@@ -77,14 +83,20 @@ async fn benchmark_post_org_for_users(
         Err(err) => {
             warn!(app_state.logger, "Sample data: unable to load: {}", err);
             let completed = Utc::now();
+            let iterations_succeeded = app_state.config.iterations - iterations_failed;
+            let execution_duration = completed - started;
             return ServerOperationMeasurement {
                 concurrent_users,
                 started,
                 completed,
-                execution_duration: completed - started,
+                execution_duration,
                 iterations_failed: 0,
                 iterations_skipped: app_state.config.iterations,
-                metrics: None,
+                metrics: ServerOperationMetrics::new(
+                    execution_duration,
+                    iterations_succeeded,
+                    histogram,
+                ),
             };
         }
     };
@@ -100,15 +112,20 @@ async fn benchmark_post_org_for_users(
             Err(err) => {
                 warn!(app_state.logger, "FHIR server expunge: error: {}", err);
                 let completed = Utc::now();
+                let iterations_succeeded = app_state.config.iterations - iterations_failed;
+                let execution_duration = completed - started;
                 return ServerOperationMeasurement {
                     concurrent_users,
                     started,
                     completed,
-                    execution_duration: completed - started,
+                    execution_duration,
                     iterations_failed,
                     iterations_skipped: iterations_remaining,
-                    // TODO implement metrics
-                    metrics: None,
+                    metrics: ServerOperationMetrics::new(
+                        execution_duration,
+                        iterations_succeeded,
+                        histogram,
+                    ),
                 };
             }
         };
@@ -119,15 +136,20 @@ async fn benchmark_post_org_for_users(
             Err(err) => {
                 warn!(app_state.logger, "Sample data: unable to load: {}", err);
                 let completed = Utc::now();
+                let iterations_succeeded = app_state.config.iterations - iterations_failed;
+                let execution_duration = completed - started;
                 return ServerOperationMeasurement {
                     concurrent_users,
                     started,
                     completed,
-                    execution_duration: completed - started,
+                    execution_duration,
                     iterations_failed,
                     iterations_skipped: iterations_remaining,
-                    // TODO implement metrics
-                    metrics: None,
+                    metrics: ServerOperationMetrics::new(
+                        execution_duration,
+                        iterations_succeeded,
+                        histogram,
+                    ),
                 };
             }
         };
@@ -145,7 +167,7 @@ async fn benchmark_post_org_for_users(
         let group_started = Utc::now();
 
         // Run the iterations for this group.
-        let group_iterations_failed = benchmark_post_org_for_users_and_data(
+        let group_results = benchmark_post_org_for_users_and_data(
             app_state,
             server_handle,
             concurrent_users,
@@ -159,8 +181,25 @@ async fn benchmark_post_org_for_users(
             "Benchmarking POST /Organization: '{}' concurrent users: group '{}/{}' with '{}' iterations: completed.",
             concurrent_users, group_index + 1, groups, group_iterations
         );
+        for operation_result in group_results {
+            match operation_result {
+                Ok(operation_success) => {
+                    let duration = operation_success.duration();
+                    let duration_millis = duration.num_milliseconds();
+                    histogram
+                        .record(duration_millis as u64)
+                        .expect("Histogram recording failed.");
+                }
+                Err(err) => {
+                    warn!(
+                        app_state.logger,
+                        "Operation '{}' failed: '{:?}", SERVER_OP_NAME_POST_ORG, err
+                    );
+                    iterations_failed += 1;
+                }
+            }
+        }
         iterations_attempted += group_iterations;
-        iterations_failed += group_iterations_failed;
         execution_duration = execution_duration + (group_completed - group_started);
     }
 
@@ -170,15 +209,16 @@ async fn benchmark_post_org_for_users(
         "Benchmarking POST /Organization: '{}' concurrent users: completed.", concurrent_users
     );
 
+    let iterations_succeeded = app_state.config.iterations - iterations_failed;
+    let execution_duration = completed - started;
     ServerOperationMeasurement {
         concurrent_users,
         started,
         completed,
-        execution_duration: completed - started,
+        execution_duration,
         iterations_failed,
         iterations_skipped: 0,
-        // TODO need to implement metrics
-        metrics: None,
+        metrics: ServerOperationMetrics::new(execution_duration, iterations_succeeded, histogram),
     }
 }
 
@@ -197,7 +237,12 @@ async fn benchmark_post_org_for_users_and_data(
     server_handle: &dyn ServerHandle,
     concurrent_users: u32,
     sample_data: Vec<serde_json::Value>,
-) -> u32 {
+) -> Vec<
+    std::result::Result<
+        ServerOperationIterationState<ServerOperationIterationSucceeded>,
+        ServerOperationIterationState<ServerOperationIterationFailed>,
+    >,
+> {
     let url = create_org_url(server_handle);
 
     /*
@@ -205,17 +250,26 @@ async fn benchmark_post_org_for_users_and_data(
      * count the iterations that failed.
      */
     let operations = sample_data.into_iter().map(|org| async {
-        let operation = run_operation_post_org(app_state, url.clone(), org);
+        let operation_state = ServerOperationIterationState::new();
+        let operation =
+            run_operation_post_org(app_state, operation_state.clone(), url.clone(), org);
         let operation = timeout(
-            app_state.config.operation_timeout.to_std().expect("unable to convert Duration"),
-            operation);
-        match operation.await {
-            Ok(_) => 0u32,
-            Err(err) => {
-                warn!(app_state.logger, "POST /Organization failed"; "error" => format!("{:?}", err));
-                1u32
-            },
-        }
+            app_state
+                .config
+                .operation_timeout
+                .to_std()
+                .expect("unable to convert Duration"),
+            operation,
+        );
+
+        // Having the timeout gives us a wrapped Result<Result ...>>. Un-nest them.
+        let result = operation.await;
+        let result = result.map_err(|err| {
+            operation_state
+                .completed()
+                .failed(anyhow!("Operation timed out: '{}'", err))
+        });
+        result.and_then(|wrapped_result| wrapped_result)
     });
 
     /*
@@ -228,12 +282,12 @@ async fn benchmark_post_org_for_users_and_data(
     /*
      * Kick off the execution of the stream, summing up all of the failures that are encountered.
      */
-    let mut iterations_failed: u32 = 0;
+    let mut results = vec![];
     while let Some(n) = operations.next().await {
-        iterations_failed += n;
+        results.push(n);
     }
 
-    iterations_failed
+    results
 }
 
 /// Creates the URL to access a server's `/Organization` endpoint.
@@ -252,45 +306,73 @@ fn create_org_url(server_handle: &dyn ServerHandle) -> Url {
 ///
 /// Parameters:
 /// * `app_state`: the application's [AppState]
+/// * `operation_state`: the initial state machine for this operation iteration
 /// * `url`: the full [Url] to the endpoint to test
 /// * `org`: the sample `Organization` resource to test with
 ///
-/// Returns an empty [Result], indicating whether or not the operation succeeded or failed.
+/// Returns the final [ServerOperationIterationState] containing information about the operation's
+/// success or failure.
 async fn run_operation_post_org(
     app_state: &AppState,
+    operation_state: ServerOperationIterationState<ServerOperationIterationStarting>,
     url: Url,
     org: serde_json::Value,
-) -> Result<()> {
-    let org_string = serde_json::to_string(&org)?;
+) -> std::result::Result<
+    ServerOperationIterationState<ServerOperationIterationSucceeded>,
+    ServerOperationIterationState<ServerOperationIterationFailed>,
+> {
+    let org_string = match serde_json::to_string(&org) {
+        Ok(org_string) => org_string,
+        Err(err) => {
+            return Err(operation_state
+                .completed()
+                .failed(anyhow!(format!("{}", err))));
+        }
+    };
     let org_id = org.get("id").expect("Organization missing ID.").to_string();
 
     trace!(app_state.logger, "POST '{}': starting...", url);
-    let stream = TcpStream::connect(&*url.socket_addrs(|| None).unwrap()).await?;
+    let stream = match TcpStream::connect(&*url.socket_addrs(|| None).unwrap()).await {
+        Ok(stream) => stream,
+        Err(err) => {
+            return Err(operation_state
+                .completed()
+                .failed(anyhow!(format!("{}", err))));
+        }
+    };
     let mut request = Request::new(Method::Post, url.clone());
     request.insert_header("Content-Type", "application/fhir+json");
     request.set_body(org_string);
 
-    let mut response = async_h1::connect(stream.clone(), request)
-        .await
-        .map_err(|err| anyhow!(format!("{}", err)))?;
+    let response = async_h1::connect(stream.clone(), request).await;
+    let operation_state = operation_state.completed();
     trace!(app_state.logger, "POST '{}': complete.", url);
 
-    let response_status = response.status();
-    if !response_status.is_success() {
-        let response_body = response
-            .body_string()
-            .await
-            .map_err(|err| anyhow!(format!("{}", err)))?;
-        return Err(anyhow!(
-            "The POST to '{}' failed for Organization '{}', with status '{}' and body: '{}'",
-            &url,
-            &org_id,
-            response_status,
-            response_body
-        ));
+    match response {
+        Ok(mut response) => {
+            let response_status = response.status();
+            if !response_status.is_success() {
+                let response_body = match response.body_string().await {
+                    Ok(response_body) => response_body,
+                    Err(err) => format!("Unable to retrieve response body due to error: '{}'", err),
+                };
+
+                let error = anyhow!(
+                    "The POST to '{}' failed for Organization '{}', with status '{}' and body: '{}'",
+                    &url,
+                    &org_id,
+                    response_status,
+                    response_body
+                );
+                let state = operation_state.failed(error);
+                return Err(state);
+            }
+
+            // TODO more checks needed
+            Ok(operation_state.succeeded())
+        }
+        Err(err) => Err(operation_state.failed(anyhow!(format!("{}", err)))),
     }
-    // TODO more checks needed
-    Ok(())
 }
 
 /// Expunge all resources from the server.
