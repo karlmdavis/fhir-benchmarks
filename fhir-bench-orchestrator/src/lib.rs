@@ -177,6 +177,8 @@ fn verify_prereqs() -> Result<()> {
         return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
             docker_compose_output.status,
             "Missing pre-req: docker-compose.".to_owned(),
+            String::from_utf8_lossy(&docker_compose_output.stdout).into(),
+            String::from_utf8_lossy(&docker_compose_output.stderr).into()
         )));
     }
 

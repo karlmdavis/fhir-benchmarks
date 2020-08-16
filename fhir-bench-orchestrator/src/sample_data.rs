@@ -111,6 +111,8 @@ pub fn generate_data(logger: &Logger, config: &AppConfig) -> Result<SampleData> 
     if !synthea_process.status.success() {
         return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
             synthea_process.status,
+            "Synthea process for sample data generation failed.".into(),
+            String::from_utf8_lossy(&synthea_process.stdout).into(),
             String::from_utf8_lossy(&synthea_process.stderr).into()
         )));
     }

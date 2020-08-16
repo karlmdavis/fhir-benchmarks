@@ -36,11 +36,18 @@ if [[ -z "${populationSize}" ]]; then >&2 echo 'The -p option for desired popula
 export DOCKER_BUILDKIT=1
 
 # Build the Docker image for Synthea.
-docker build --file ./Dockerfile.synthea --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t "${IMAGE_TAG}" --cache-from docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea --build-arg BUILDKIT_INLINE_CACHE=1 .
+docker build --file ./Dockerfile.synthea -t "${IMAGE_TAG}" --cache-from docker.pkg.github.com/karlmdavis/fhir-benchmarks/synthea --build-arg BUILDKIT_INLINE_CACHE=1 .
 
 # Run Synthea, with the specified options.
 target="$(pwd)/target"
 if [[ ! -d "${target}" ]]; then mkdir "${target}"; fi
+docker run \
+  --rm \
+  --mount source="${target}",target="/synthea/target/",type=bind \
+  --user "$(id -u)" \
+  --entrypoint '/bin/bash' \
+  "${IMAGE_TAG}" \
+  -x -c 'id && ls -lan / && ls -lan /synthea'
 docker run \
   --rm \
   --mount source="${target}",target="/synthea/target/",type=bind \

@@ -52,6 +52,8 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
             return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
                 docker_up_output.status,
                 "Failed to launch HAPI FHIR JPA Server via docker-compose.".to_owned(),
+                String::from_utf8_lossy(&docker_up_output.stdout).into(),
+                String::from_utf8_lossy(&docker_up_output.stderr).into()
             )));
         }
 
@@ -155,6 +157,8 @@ impl ServerHandle for HapiJpaFhirServerHandle {
             return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
                 docker_down_output.status,
                 "Failed to shutdown HAPI FHIR JPA Server via docker-compose.".to_owned(),
+                String::from_utf8_lossy(&docker_down_output.stdout).into(),
+                String::from_utf8_lossy(&docker_down_output.stderr).into()
             )));
         }
 
