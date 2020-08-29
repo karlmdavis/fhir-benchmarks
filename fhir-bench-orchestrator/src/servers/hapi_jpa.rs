@@ -3,6 +3,7 @@ use crate::servers::{ServerHandle, ServerName, ServerPlugin};
 use crate::AppState;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use slog::{info, warn};
 use std::process::Command;
 use url::Url;
 
@@ -58,9 +59,13 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
         let server_handle = HapiJpaFhirServerHandle {};
 
         // Wait (up to a timeout) for the server to be ready.
-        wait_for_ready(app_state, &server_handle).await?;
-
-        Ok(Box::new(server_handle))
+        match wait_for_ready(app_state, &server_handle).await {
+            Err(err) => {
+                server_handle.emit_logs_info(&app_state.logger);
+                Err(err)
+            }
+            Ok(_) => Ok(Box::new(server_handle))
+        }
     }
 }
 
@@ -72,18 +77,28 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
 ///
 /// Returns an empty [Result], where an error indicates that the server was not ready.
 async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
-    async_std::future::timeout(std::time::Duration::from_secs(10), async {
+    async_std::future::timeout(std::time::Duration::from_secs(60), async {
         let mut ready = false;
         let mut probe = None;
 
         while !ready {
             probe = Some(probe_for_ready(app_state, server_handle).await);
             ready = probe.as_ref().expect("probe result missing").is_ok();
+
+            if !ready {
+                async_std::task::sleep(std::time::Duration::from_millis(500)).await;
+            }
         }
 
         probe.expect("probe results missing")
     })
-    .await?
+    .await
+    .with_context(|| {
+        format!(
+            "Timed out while waiting for server '{}' to launch.",
+            SERVER_NAME
+        )
+    })?
 }
 
 /// Checks the specified server one time to see if it is ready.
@@ -102,6 +117,34 @@ async fn probe_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle)
 pub struct HapiJpaFhirServerHandle {}
 
 impl ServerHandle for HapiJpaFhirServerHandle {
+    fn base_url(&self) -> url::Url {
+        Url::parse("http://localhost:8080/hapi-fhir-jpaserver/fhir/").expect("Unable to parse URL.")
+    }
+
+    fn emit_logs_info(&self, logger: &slog::Logger) {
+        let docker_logs_output = match Command::new("docker-compose")
+            .args(&["logs", "--no-color"])
+            .current_dir("server_builds/hapi_fhir_jpaserver")
+            .output()
+            .context("Failed to run 'docker-compose logs'.")
+        {
+            Ok(output) => output,
+            Err(err) => {
+                warn!(
+                    logger,
+                    "Unable to retrieve docker-compose logs for '{}' server: {}", SERVER_NAME, err
+                );
+                return;
+            }
+        };
+        info!(
+            logger,
+            "Full docker-compose logs for '{}' server:\n{}",
+            SERVER_NAME,
+            String::from_utf8_lossy(&docker_logs_output.stdout)
+        );
+    }
+
     fn shutdown(&self) -> Result<()> {
         let docker_down_output = Command::new("docker-compose")
             .args(&["down"])
@@ -116,9 +159,5 @@ impl ServerHandle for HapiJpaFhirServerHandle {
         }
 
         Ok(())
-    }
-
-    fn base_url(&self) -> url::Url {
-        Url::parse("http://localhost:8080/hapi-fhir-jpaserver/fhir/").expect("Unable to parse URL.")
     }
 }
