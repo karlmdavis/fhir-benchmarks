@@ -1,5 +1,9 @@
 //! Contains the code to run `/metadata` server operations.
 
+use super::{
+    ServerOperationIterationFailed, ServerOperationIterationStarting,
+    ServerOperationIterationState, ServerOperationIterationSucceeded, ServerOperationMetrics,
+};
 use crate::servers::ServerHandle;
 use crate::test_framework::{ServerOperationLog, ServerOperationMeasurement};
 use crate::AppState;
@@ -8,6 +12,7 @@ use async_std::future::timeout;
 use async_std::net::TcpStream;
 use chrono::prelude::*;
 use futures::prelude::*;
+use hdrhistogram::Histogram;
 use http_types::{Method, Request, Url};
 use slog::{info, trace, warn};
 use std::convert::TryFrom;
@@ -43,35 +48,58 @@ pub fn create_metadata_url(server_handle: &dyn ServerHandle) -> Url {
 ///
 /// Parameters:
 /// * `app_state`: the application's [AppState]
+/// * `operation_state`: the initial state machine for this operation iteration
 /// * `url`: the full [Url] to the endpoint to test
 ///
-/// Returns an empty [Result], indicating whether or not the operation succeeded or failed.
-async fn run_operation_metadata(app_state: &AppState, url: Url) -> Result<()> {
+/// Returns the final [ServerOperationIterationState] containing information about the operation's
+/// success or failure.
+async fn run_operation_metadata(
+    app_state: &AppState,
+    operation_state: ServerOperationIterationState<ServerOperationIterationStarting>,
+    url: Url,
+) -> std::result::Result<
+    ServerOperationIterationState<ServerOperationIterationSucceeded>,
+    ServerOperationIterationState<ServerOperationIterationFailed>,
+> {
     trace!(app_state.logger, "GET '{}': starting...", url);
-    let stream = TcpStream::connect(&*url.socket_addrs(|| None).unwrap()).await?;
+    let stream = match TcpStream::connect(&*url.socket_addrs(|| None).unwrap()).await {
+        Ok(stream) => stream,
+        Err(err) => {
+            return Err(operation_state
+                .completed()
+                .failed(anyhow!(format!("{}", err))));
+        }
+    };
     let request = Request::new(Method::Get, url.clone());
 
-    let mut response = async_h1::connect(stream.clone(), request)
-        .await
-        .map_err(|err| anyhow!(format!("{}", err)))?;
+    let response = async_h1::connect(stream.clone(), request).await;
+    let operation_state = operation_state.completed();
     trace!(app_state.logger, "GET '{}': complete.", url);
 
-    let response_status = response.status();
-    if !response_status.is_success() {
-        let response_body = response
-            .body_string()
-            .await
-            .map_err(|err| anyhow!(format!("{}", err)))?;
-        return Err(anyhow!(
-            "The GET /metadata to '{}' failed, with status '{}' and body: '{}'",
-            &url,
-            response_status,
-            response_body
-        ));
-    }
+    match response {
+        Ok(mut response) => {
+            let response_status = response.status();
+            if !response_status.is_success() {
+                let response_body = match response.body_string().await {
+                    Ok(response_body) => response_body,
+                    Err(err) => format!("Unable to retrieve response body due to error: '{}'", err),
+                };
 
-    // TODO more checks needed
-    Ok(())
+                let error = anyhow!(
+                    "The GET /metadata to '{}' failed, with status '{}' and body: '{}'",
+                    &url,
+                    response_status,
+                    response_body
+                );
+                let state = operation_state.failed(error);
+                return Err(state);
+            }
+
+            // TODO more checks needed
+            Ok(operation_state.succeeded())
+        }
+        Err(err) => Err(operation_state.failed(anyhow!(format!("{}", err)))),
+    }
 }
 
 /// Runs a single iteration of the `/metadata` operation and verifies its result, logging out any faults that
@@ -121,7 +149,8 @@ async fn benchmark_operation_metadata_for_users(
      * count the iterations that failed.
      */
     let operations = (0..app_state.config.iterations).map(|_| async {
-        let operation = run_operation_metadata(app_state, url.clone());
+        let operation_state = ServerOperationIterationState::new();
+        let operation = run_operation_metadata(app_state, operation_state.clone(), url.clone());
         let operation = timeout(
             app_state
                 .config
@@ -130,13 +159,15 @@ async fn benchmark_operation_metadata_for_users(
                 .expect("unable to convert Duration"),
             operation,
         );
-        match operation.await {
-            Ok(_) => 0u32,
-            Err(err) => {
-                warn!(app_state.logger, "GET /metadata failed"; "error" => format!("{:?}", err));
-                1u32
-            }
-        }
+
+        // Having the timeout gives us a wrapped Result<Result ...>>. Un-nest them.
+        let result = operation.await;
+        let result = result.map_err(|err| {
+            operation_state
+                .completed()
+                .failed(anyhow!("Operation timed out: '{}'", err))
+        });
+        result.and_then(|wrapped_result| wrapped_result)
     });
 
     /*
@@ -149,14 +180,30 @@ async fn benchmark_operation_metadata_for_users(
     /*
      * Kick off the execution of the stream, summing up all of the failures that are encountered.
      */
+    let mut histogram = Histogram::<u64>::new(3).expect("Unable to construct histogram.");
     info!(
         app_state.logger,
         "Benchmarking GET /metadata: '{}' concurrent users: starting...", concurrent_users
     );
     let started = Utc::now();
     let mut iterations_failed: u32 = 0;
-    while let Some(n) = operations.next().await {
-        iterations_failed += n;
+    while let Some(operation_result) = operations.next().await {
+        match operation_result {
+            Ok(operation_success) => {
+                let duration = operation_success.duration();
+                let duration_millis = duration.num_milliseconds();
+                histogram
+                    .record(duration_millis as u64)
+                    .expect("Histogram recording failed.");
+            }
+            Err(err) => {
+                warn!(
+                    app_state.logger,
+                    "Operation '{}' failed: '{:?}", SERVER_OP_NAME_METADATA, err
+                );
+                iterations_failed += 1;
+            }
+        }
     }
     let completed = Utc::now();
     info!(
@@ -164,14 +211,15 @@ async fn benchmark_operation_metadata_for_users(
         "Benchmarking GET /metadata: '{}' concurrent users: completed.", concurrent_users
     );
 
+    let iterations_succeeded = app_state.config.iterations - iterations_failed;
+    let execution_duration = completed - started;
     ServerOperationMeasurement {
         concurrent_users,
         started,
         completed,
-        execution_duration: completed - started,
+        execution_duration,
         iterations_failed,
         iterations_skipped: 0,
-        // TODO need to implement metrics
-        metrics: None,
+        metrics: ServerOperationMetrics::new(execution_duration, iterations_succeeded, histogram),
     }
 }

@@ -3,7 +3,7 @@
 use crate::config::AppConfig;
 use anyhow::{anyhow, Context, Result};
 use serde_json::json;
-use slog::{trace, Logger};
+use slog::{info, Logger};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -98,7 +98,7 @@ pub fn generate_data(logger: &Logger, config: &AppConfig) -> Result<SampleData> 
     /*
      * Build and run the Docker-ized version of Synthea.
      */
-    trace!(logger, "Sample data: generating...");
+    info!(logger, "Sample data: generating...");
     let synthea_bin: PathBuf = synthea_dir.join("generate-synthetic-data.sh");
     if !synthea_bin.is_file() {
         return Err(anyhow!(format!("unable to read file: '{:?}'", synthea_bin)));
@@ -116,7 +116,7 @@ pub fn generate_data(logger: &Logger, config: &AppConfig) -> Result<SampleData> 
             String::from_utf8_lossy(&synthea_process.stderr).into()
         )));
     }
-    trace!(logger, "Sample data: generated.");
+    info!(logger, "Sample data: generated.");
 
     // Write out the config that was used to generate the data.
     let config_file = File::create(&config_path).with_context(|| {

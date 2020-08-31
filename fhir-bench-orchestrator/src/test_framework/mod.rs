@@ -2,12 +2,12 @@
 
 use crate::config::AppConfig;
 use crate::servers::{ServerHandle, ServerName, ServerPlugin};
-use crate::util::serde_duration_iso8601;
+use crate::util::{serde_duration_iso8601, serde_histogram};
 use crate::AppState;
 use anyhow::Result;
 use chrono::prelude::*;
 use chrono::Duration;
-use rust_decimal::Decimal;
+use hdrhistogram::Histogram;
 use serde::{Deserialize, Serialize};
 use slog_derive::SerdeValue;
 
@@ -180,9 +180,8 @@ pub struct ServerOperationMeasurement {
     /// The number of iterations that were skipped due to problems that halte the benchmark attempt early.
     pub iterations_skipped: u32,
 
-    /// The [ServerOperationMetrics] for the measurement attempt, which will be present if at least one
-    /// iteration was successful.
-    pub metrics: Option<ServerOperationMetrics>,
+    /// The [ServerOperationMetrics] for the measurement attempt.
+    pub metrics: ServerOperationMetrics,
 }
 
 /// Represents the unique name of a FHIR server operation that this framework tests.
@@ -212,14 +211,150 @@ impl std::fmt::Display for ServerOperationName {
 /// Details the performance of a single server operation, across all iterations (including any failures).
 #[derive(Deserialize, SerdeValue, Clone, Serialize)]
 pub struct ServerOperationMetrics {
-    pub throughput_rpm: Decimal,
-    pub latency_mean: Decimal,
-    pub latency_p50: Decimal,
-    pub latency_p90: Decimal,
-    pub latency_p99: Decimal,
-    pub latency_p999: Decimal,
-    pub latency_p100: Decimal,
-    pub latency_hdr_histogram: String, // FIXME type
+    pub throughput_per_second: f64,
+    pub latency_millis_mean: f64,
+    pub latency_millis_p50: u64,
+    pub latency_millis_p90: u64,
+    pub latency_millis_p99: u64,
+    pub latency_millis_p999: u64,
+    pub latency_millis_p100: u64,
+    #[serde(with = "serde_histogram")]
+    pub latency_histogram: Histogram<u64>,
+    pub latency_histogram_hgrm_gzip: String,
+}
+
+impl ServerOperationMetrics {
+    pub fn new(
+        duration: Duration,
+        iterations_succeeded: u32,
+        histogram: Histogram<u64>,
+    ) -> ServerOperationMetrics {
+        let duration_millis: f64 = duration.num_milliseconds() as f64;
+        let throughput_per_millis: f64 = Into::<f64>::into(iterations_succeeded) / duration_millis;
+        let throughput_per_second: f64 = throughput_per_millis * 1000f64;
+        let latency_histogram_hgrm_gzip =
+            crate::util::histogram_hgrm_export::export_to_hgrm_gzip(&histogram)
+                .expect("Unable to export histogram.");
+
+        ServerOperationMetrics {
+            throughput_per_second,
+            latency_millis_mean: histogram.mean(),
+            latency_millis_p50: histogram.value_at_quantile(0.5),
+            latency_millis_p90: histogram.value_at_quantile(0.9),
+            latency_millis_p99: histogram.value_at_quantile(0.5),
+            latency_millis_p999: histogram.value_at_quantile(0.5),
+            latency_millis_p100: histogram.max(),
+            latency_histogram: histogram,
+            latency_histogram_hgrm_gzip,
+        }
+    }
+}
+
+/// A state machine for tracking the progress and results of a single iteration for a server
+/// operation being benchmarked.
+#[derive(Clone, Debug)]
+struct ServerOperationIterationState<S> {
+    _inner: S,
+}
+
+/// This [ServerOperationIterationState] state node models an operation that is starting.
+#[derive(Clone, Debug)]
+struct ServerOperationIterationStarting {
+    /// When this operation iteration started, in wall-clock time.
+    started: DateTime<Utc>,
+}
+
+/// This [ServerOperationIterationState] state node models an operation that has completed, but
+/// before success or failure has been determined.
+#[derive(Debug)]
+struct ServerOperationIterationCompleted {
+    /*
+     * Design note: if the benchmark runner is under memory pressure, the state here could instead
+     * be collapsed to a single Duration instance.
+     */
+    /// The state from the operation's start.
+    start: ServerOperationIterationStarting,
+
+    /// When this operation iteration completed, in wall-clock time.
+    completed: DateTime<Utc>,
+}
+
+/// This [ServerOperationIterationState] state node models an operation that has completed
+/// successfully.
+#[derive(Debug)]
+struct ServerOperationIterationSucceeded {
+    /// The state from the operation's completion.
+    completed: ServerOperationIterationCompleted,
+}
+
+/// This [ServerOperationIterationState] state node models an operation that failed to complete
+/// successfully.
+#[derive(Debug)]
+struct ServerOperationIterationFailed {
+    /// The state from the operation's completion.
+    completed: ServerOperationIterationCompleted,
+
+    /// The [anyhow::Error] detailing how/why the operation iteraion failed.
+    error: anyhow::Error,
+}
+
+impl ServerOperationIterationState<ServerOperationIterationStarting> {
+    /// Creates a new [ServerOperationIterationState] state machine instance, as the operation
+    /// iteration is being started.
+    pub fn new() -> ServerOperationIterationState<ServerOperationIterationStarting> {
+        ServerOperationIterationState {
+            _inner: ServerOperationIterationStarting {
+                started: Utc::now(),
+            },
+        }
+    }
+
+    /// Transitions this [ServerOperationIterationState] state machine instance after the operation
+    /// iteration completes, but before its success or failure has been determined.
+    pub fn completed(self) -> ServerOperationIterationState<ServerOperationIterationCompleted> {
+        ServerOperationIterationState {
+            _inner: ServerOperationIterationCompleted {
+                start: self._inner,
+                completed: Utc::now(),
+            },
+        }
+    }
+}
+
+impl ServerOperationIterationState<ServerOperationIterationCompleted> {
+    /// Transitions this [ServerOperationIterationState] state machine instance after the operation
+    /// iteration has been deemed a success.
+    pub fn succeeded(self) -> ServerOperationIterationState<ServerOperationIterationSucceeded> {
+        ServerOperationIterationState {
+            _inner: ServerOperationIterationSucceeded {
+                completed: self._inner,
+            },
+        }
+    }
+
+    /// Transitions this [ServerOperationIterationState] state machine instance after the operation
+    /// iteration has been deemed a failure.
+    ///
+    /// Parameters:
+    /// * `error`: the [anyhow::Error] detailing how/why the operation iteraion failed
+    pub fn failed(
+        self,
+        error: anyhow::Error,
+    ) -> ServerOperationIterationState<ServerOperationIterationFailed> {
+        ServerOperationIterationState {
+            _inner: ServerOperationIterationFailed {
+                completed: self._inner,
+                error,
+            },
+        }
+    }
+}
+
+impl ServerOperationIterationState<ServerOperationIterationSucceeded> {
+    /// Returns the [Duration] that the operation iteration ran for.
+    pub fn duration(&self) -> Duration {
+        self._inner.completed.completed - self._inner.completed.start.started
+    }
 }
 
 /// Runs the benchmark framework to test the supported operations for the specified FHIR server.
@@ -253,11 +388,11 @@ mod tests {
         ServerOperationMeasurement, ServerOperationMetrics, ServerResult,
     };
     use crate::util::serde_duration_iso8601;
+    use anyhow::Result;
     use chrono::prelude::*;
     use chrono::Duration;
-    use rust_decimal::Decimal;
+    use hdrhistogram::Histogram;
     use serde_json::json;
-    use std::str::FromStr;
 
     static SERVER_NAME_FAKE: &str = "Fake HAPI";
     static SERVER_OP_NAME_FAKE: &str = "Operation A";
@@ -284,32 +419,34 @@ mod tests {
 
     /// Verifies that `ServerOperationMetrics` serializes as expected.
     #[test]
-    fn serialize_server_operation_metrics() {
+    fn serialize_server_operation_metrics() -> Result<()> {
         let expected = json!({
-            "throughput_rpm": 42.0,
-            "latency_mean": 1.0,
-            "latency_p50": 1.0,
-            "latency_p90": 1.0,
-            "latency_p99": 1.0,
-            "latency_p999": 1.0,
-            "latency_p100": 1.0,
-            // A Base64 encoding of the HDR Histogram data.
-            "latency_hdr_histogram": "SGVsbG8sIFdvcmxk"
+            "throughput_per_second": 42.0,
+            "latency_millis_mean": 1.0,
+            "latency_millis_p50": 1,
+            "latency_millis_p90": 1,
+            "latency_millis_p99": 1,
+            "latency_millis_p999": 1,
+            "latency_millis_p100": 1,
+            "latency_histogram": "HISTFAAAABx4nJNpmSzMwMDAyAABzFAaxmey/wBlAQA8yQJ9",
+            "latency_histogram_hgrm_gzip": "foo",
         });
         let expected = serde_json::to_string(&expected).unwrap();
         let actual = ServerOperationMetrics {
-            throughput_rpm: Decimal::from_str("42.0").unwrap(),
-            latency_mean: Decimal::from_str("1.0").unwrap(),
-            latency_p50: Decimal::from_str("1.0").unwrap(),
-            latency_p90: Decimal::from_str("1.0").unwrap(),
-            latency_p99: Decimal::from_str("1.0").unwrap(),
-            latency_p999: Decimal::from_str("1.0").unwrap(),
-            latency_p100: Decimal::from_str("1.0").unwrap(),
-            // FIXME This should be an actual Histogram struct.
-            latency_hdr_histogram: "SGVsbG8sIFdvcmxk".into(),
+            throughput_per_second: 42.0,
+            latency_millis_mean: 1.0,
+            latency_millis_p50: 1,
+            latency_millis_p90: 1,
+            latency_millis_p99: 1,
+            latency_millis_p999: 1,
+            latency_millis_p100: 1,
+            latency_histogram: Histogram::<u64>::new(3)?,
+            latency_histogram_hgrm_gzip: "foo".into(),
         };
         let actual = serde_json::to_string(&actual).unwrap();
         assert_eq!(expected, actual);
+
+        Ok(())
     }
 
     /// Verifies that `ServerOperationLog` serializes as expected.
@@ -332,7 +469,7 @@ mod tests {
 
     /// Verifies that [ServerOperationMeasurement] serializes as expected.
     #[test]
-    fn serialize_server_operation_measurement() {
+    fn serialize_server_operation_measurement() -> Result<()> {
         let expected = json!({
             "concurrent_users": 10,
             "started": "2020-01-01T15:00:00Z",
@@ -340,7 +477,17 @@ mod tests {
             "execution_duration": "PT1.234S",
             "iterations_failed": 1,
             "iterations_skipped": 0,
-            "metrics": null,
+            "metrics": {
+                "throughput_per_second": 42.0,
+                "latency_millis_mean": 1.0,
+                "latency_millis_p50": 1,
+                "latency_millis_p90": 1,
+                "latency_millis_p99": 1,
+                "latency_millis_p999": 1,
+                "latency_millis_p100": 1,
+                "latency_histogram": "HISTFAAAABx4nJNpmSzMwMDAyAABzFAaxmey/wBlAQA8yQJ9",
+                "latency_histogram_hgrm_gzip": "foo",
+            }
         });
         let expected = serde_json::to_string(&expected).unwrap();
         let actual = ServerOperationMeasurement {
@@ -350,15 +497,27 @@ mod tests {
             execution_duration: Duration::nanoseconds(serde_duration_iso8601::NANOS_PER_SEC + 234),
             iterations_failed: 1,
             iterations_skipped: 0,
-            metrics: None,
+            metrics: ServerOperationMetrics {
+                throughput_per_second: 42.0,
+                latency_millis_mean: 1.0,
+                latency_millis_p50: 1,
+                latency_millis_p90: 1,
+                latency_millis_p99: 1,
+                latency_millis_p999: 1,
+                latency_millis_p100: 1,
+                latency_histogram: Histogram::<u64>::new(3)?,
+                latency_histogram_hgrm_gzip: "foo".into(),
+            },
         };
         let actual = serde_json::to_string(&actual).unwrap();
         assert_eq!(expected, actual);
+
+        Ok(())
     }
 
     /// Verifies that `FrameworkResults` serializes as expected.
     #[test]
-    fn serialize_framework_results() {
+    fn serialize_framework_results() -> Result<()> {
         let expected = json!({
             "started": "2020-01-01T12:00:00Z",
             "completed": "2020-01-01T19:00:00Z",
@@ -389,15 +548,15 @@ mod tests {
                             "iterations_failed": 1,
                             "iterations_skipped": 0,
                             "metrics": {
-                                "throughput_rpm": 42.0,
-                                "latency_mean": 1.0,
-                                "latency_p50": 1.0,
-                                "latency_p90": 1.0,
-                                "latency_p99": 1.0,
-                                "latency_p999": 1.0,
-                                "latency_p100": 1.0,
-                                // A Base64 encoding of the HDR Histogram data.
-                                "latency_hdr_histogram": "SGVsbG8sIFdvcmxk"
+                                "throughput_per_second": 42.0,
+                                "latency_millis_mean": 1.0,
+                                "latency_millis_p50": 1,
+                                "latency_millis_p90": 1,
+                                "latency_millis_p99": 1,
+                                "latency_millis_p999": 1,
+                                "latency_millis_p100": 1,
+                                "latency_histogram": "HISTFAAAABx4nJNpmSzMwMDAyAABzFAaxmey/wBlAQA8yQJ9",
+                                "latency_histogram_hgrm_gzip": "foo",
                             }
                         }]
                     }
@@ -440,17 +599,17 @@ mod tests {
                         ),
                         iterations_failed: 1,
                         iterations_skipped: 0,
-                        metrics: Some(ServerOperationMetrics {
-                            throughput_rpm: Decimal::from_str("42.0").unwrap(),
-                            latency_mean: Decimal::from_str("1.0").unwrap(),
-                            latency_p50: Decimal::from_str("1.0").unwrap(),
-                            latency_p90: Decimal::from_str("1.0").unwrap(),
-                            latency_p99: Decimal::from_str("1.0").unwrap(),
-                            latency_p999: Decimal::from_str("1.0").unwrap(),
-                            latency_p100: Decimal::from_str("1.0").unwrap(),
-                            // FIXME This should be an actual Histogram struct.
-                            latency_hdr_histogram: "SGVsbG8sIFdvcmxk".into(),
-                        }),
+                        metrics: ServerOperationMetrics {
+                            throughput_per_second: 42.0,
+                            latency_millis_mean: 1.0,
+                            latency_millis_p50: 1,
+                            latency_millis_p90: 1,
+                            latency_millis_p99: 1,
+                            latency_millis_p999: 1,
+                            latency_millis_p100: 1,
+                            latency_histogram: Histogram::<u64>::new(3)?,
+                            latency_histogram_hgrm_gzip: "foo".into(),
+                        },
                     }],
                 }]),
                 shutdown: Some(FrameworkOperationLog {
@@ -462,5 +621,7 @@ mod tests {
         };
         let actual = serde_json::to_string(&actual).unwrap();
         assert_eq!(expected, actual);
+
+        Ok(())
     }
 }
