@@ -8,8 +8,8 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum AppError {
     /// Represents an error caused by a child process exiting abnormally.
-    #[error("child process exited with code '{0}' and this message: '{1}'")]
-    ChildProcessFailure(std::process::ExitStatus, String),
+    #[error("child process exited with code '{0}', this message: '{1}, this STDOUT: '{2}', and this STDERR: '{3}")]
+    ChildProcessFailure(std::process::ExitStatus, String, String, String),
 
     /// Represents an error caused by an attempt to lookup an unknown server.
     #[error("unknown server '{0}'")]
