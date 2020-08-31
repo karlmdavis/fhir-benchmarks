@@ -41,6 +41,13 @@ pub trait ServerHandle: Sync {
     /// Return the base URL for the running FHIR server, e.g. `http://localhost:8080/foo/`.
     fn base_url(&self) -> Url;
 
+    /// Write the full log content from the running FHIR server and its dependencies to the
+    /// specified [slog::Logger] at the info level.
+    ///
+    /// Note: This method should not panic. If unable to retrieve the logs, a warning about that
+    /// failure should be logged, instead.
+    fn emit_logs_info(&self, logger: &slog::Logger);
+
     /// TODO
     fn shutdown(&self) -> Result<()>;
 }
