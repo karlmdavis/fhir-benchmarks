@@ -377,6 +377,8 @@ async fn run_operation_post_org(
 
 /// Expunge all resources from the server.
 ///
+/// See <https://smilecdr.com/docs/fhir_repository/deleting_data.html#expunge> for details.
+///
 /// Parameters:
 /// * `app_state`: the application's [AppState]
 /// * `server_handle`: the [ServerHandle] for the server implementation instance being tested
