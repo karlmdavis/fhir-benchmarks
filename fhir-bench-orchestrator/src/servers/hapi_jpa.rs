@@ -64,7 +64,7 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
                 server_handle.emit_logs_info(&app_state.logger);
                 Err(err)
             }
-            Ok(_) => Ok(Box::new(server_handle))
+            Ok(_) => Ok(Box::new(server_handle)),
         }
     }
 }
