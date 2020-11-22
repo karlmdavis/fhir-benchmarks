@@ -23,7 +23,11 @@ fn benchmark_small() {
         .env(ENV_KEY_POPULATION_SIZE, "10")
         .timeout(std::time::Duration::from_secs(60 * 5))
         .ok();
-    assert!(output.is_ok(), "Failed to run benchmark: '{}'", output.unwrap_err());
+    assert!(
+        output.is_ok(),
+        "Failed to run benchmark: '{}'",
+        output.unwrap_err()
+    );
     let output = output.unwrap();
 
     // We want to validate the output from STDOUT and STDERR, so we capture them to `str`s, here.
