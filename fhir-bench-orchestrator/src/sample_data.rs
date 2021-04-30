@@ -5,7 +5,7 @@ use anyhow::{anyhow, Context, Result};
 use serde_json::json;
 use slog::{debug, info, trace, Logger};
 use std::fs::File;
-use std::path::{Path,PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{collections::HashSet, io::BufReader};
 
