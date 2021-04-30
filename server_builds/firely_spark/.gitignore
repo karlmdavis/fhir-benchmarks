@@ -1,0 +1,2 @@
+# Don't save the downloaded, very unstable Docker Compose file.
+docker-compose.yml

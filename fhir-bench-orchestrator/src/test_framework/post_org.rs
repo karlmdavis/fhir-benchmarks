@@ -107,7 +107,7 @@ async fn benchmark_post_org_for_users(
         let group_iterations = std::cmp::min(sample_orgs_count, iterations_remaining);
 
         // Wipe the server to start with a blank slate. Also allows for sample data to be re-used.
-        match expunge_everything(app_state, server_handle) {
+        match server_handle.expunge_all_content(app_state).await {
             Ok(_) => {}
             Err(err) => {
                 warn!(app_state.logger, "FHIR server expunge: error: {}", err);
@@ -329,6 +329,17 @@ async fn run_operation_post_org(
                 .failed(anyhow!(format!("{}", err))));
         }
     };
+
+    /*
+     * TODO Per the FHIR spec, POST "SHALL" ignore IDs in resources,
+     * so any later GETs using the ID in the JSON source would fail.
+     * Once I want to start testing GET /Organization (or whatever),
+     * I'll have to ensure that my POSTs catch and store the IDs of the resources,
+     * as they're created.
+     * Also: Spark noncompliantly throws an error due to the ID being in the
+     * resource, so I need to strip that out here, too.
+     */
+
     let org_id = org.get("id").expect("Organization missing ID.").to_string();
 
     trace!(app_state.logger, "POST '{}': starting...", url);
@@ -373,36 +384,4 @@ async fn run_operation_post_org(
         }
         Err(err) => Err(operation_state.failed(anyhow!(format!("{}", err)))),
     }
-}
-
-/// Expunge all resources from the server.
-///
-/// See <https://smilecdr.com/docs/fhir_repository/deleting_data.html#expunge> for details.
-///
-/// Parameters:
-/// * `app_state`: the application's [AppState]
-/// * `server_handle`: the [ServerHandle] for the server implementation instance being tested
-fn expunge_everything(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
-    // FIXME probably want to switch to something that supports async_std here
-    let url = server_handle
-        .base_url()
-        .join("$expunge")
-        .expect("Error parsing URL.");
-    let client = reqwest::blocking::Client::new();
-    let response = client
-        .post(url.clone())
-        .query(&[("expungeEverything", "true")])
-        .send()
-        .with_context(|| format!("The POST to '{}' failed.", url))?;
-
-    if !response.status().is_success() {
-        warn!(app_state.logger, "POST failed"; "url" => url.as_str(), "status" => response.status().as_str());
-        return Err(anyhow!(
-            "The POST to '{}' failed, with status '{}'.",
-            &url,
-            &response.status()
-        ));
-    }
-    // TODO more checks needed
-    Ok(())
 }

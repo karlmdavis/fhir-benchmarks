@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+mod firely_spark;
 mod hapi_jpa;
 
 /// Represents the unique name of a FHIR server implementation.
@@ -37,6 +38,7 @@ impl From<&str> for ServerName {
 ///
 /// Implementations are required to be [Sync](core::marker::Sync), so that they may be used in `async`
 /// contexts and otherwise borrowed across threads.
+#[async_trait]
 pub trait ServerHandle: Sync {
     /// Return the base URL for the running FHIR server, e.g. `http://localhost:8080/foo/`.
     fn base_url(&self) -> Url;
@@ -47,6 +49,12 @@ pub trait ServerHandle: Sync {
     /// Note: This method should not panic. If unable to retrieve the logs, a warning about that
     /// failure should be logged, instead.
     fn emit_logs_info(&self, logger: &slog::Logger);
+
+    /// Clear all content from the server, as if had just been launched with an empty database.
+    ///
+    /// Parameters:
+    /// * `app_state`: the application's [AppState]
+    async fn expunge_all_content(&self, app_state: &AppState) -> Result<()>;
 
     /// TODO
     fn shutdown(&self) -> Result<()>;
@@ -83,6 +91,7 @@ pub fn create_server_plugins() -> Result<Vec<Box<dyn ServerPlugin>>> {
     let mut servers: Vec<Box<dyn ServerPlugin>> = vec![];
 
     servers.push(Box::new(hapi_jpa::HapiJpaFhirServerPlugin::new()));
+    servers.push(Box::new(firely_spark::SparkFhirServerPlugin::new()));
 
     Ok(servers)
 }
