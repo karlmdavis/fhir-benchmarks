@@ -112,10 +112,8 @@ pub trait ServerPlugin: Sync + Send {
 /// Declares (and provides instances of) all of the `ServerPlugin` impls that are available to the
 /// application.
 pub fn create_server_plugins() -> Result<Vec<Arc<dyn ServerPlugin>>> {
-    let mut servers: Vec<Arc<dyn ServerPlugin>> = vec![];
-
-    servers.push(Arc::new(hapi_jpa::HapiJpaFhirServerPlugin::new()));
-    servers.push(Arc::new(firely_spark::SparkFhirServerPlugin::new()));
-
-    Ok(servers)
+    Ok(vec![
+        Arc::new(hapi_jpa::HapiJpaFhirServerPlugin::new()),
+        Arc::new(firely_spark::SparkFhirServerPlugin::new()),
+    ])
 }

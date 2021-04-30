@@ -5,7 +5,7 @@ use anyhow::{anyhow, Context, Result};
 use serde_json::json;
 use slog::{debug, info, trace, Logger};
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path,PathBuf};
 use std::process::Command;
 use std::{collections::HashSet, io::BufReader};
 
@@ -111,7 +111,7 @@ impl SampleResourceIter {
 ///
 /// Parameters:
 /// * `sample_file`: the `Bundle`-containing file to parse
-fn parse_sample_resources(sample_file: &PathBuf) -> Result<Vec<SampleResource>> {
+fn parse_sample_resources(sample_file: &Path) -> Result<Vec<SampleResource>> {
     let file = File::open(sample_file)?;
     let reader = BufReader::new(file);
 
@@ -129,7 +129,7 @@ fn parse_sample_resources(sample_file: &PathBuf) -> Result<Vec<SampleResource>> 
         .map(|e| e["resource"].to_owned())
         .map(|e| SampleResource {
             metadata: SampleResourceMetadata {
-                source_file: sample_file.clone(),
+                source_file: sample_file.to_path_buf(),
                 resource_type: e
                     .get("resourceType")
                     .expect("Sample resource missing resourceType.")

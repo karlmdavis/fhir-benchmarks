@@ -365,6 +365,7 @@ impl ServerOperationIterationState<ServerOperationIterationSucceeded> {
 /// * `server_handle`: the [ServerHandle] for the server implementation to be tested
 ///
 /// Returns the [ServerOperationLog]s for each operation that was tested.
+#[allow(clippy::vec_init_then_push)]
 pub async fn run_operations(
     app_state: &AppState,
     server_handle: &dyn ServerHandle,
