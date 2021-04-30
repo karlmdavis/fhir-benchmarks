@@ -19,11 +19,14 @@ http-types = "2"
 
 # Provide application logging facilities.
 log = "0.4"
+# 'slog' is the logging framework used by this application. You can add the `max_level_*` feature to it
+# to crank logging all the way up (`max_level_info` is the default).
 slog = { version = "2", features = ["nested-values"] }
 slog-async = { version = "2" }
 slog-stdlog = { version = "4" }
 slog-scope = { version = "4" }
 slog-json = { version = "2" }
+slog-term = { version = "2" }
 slog_derive = { version = "0.2" }
 erased-serde = { version = "0.3" }
 

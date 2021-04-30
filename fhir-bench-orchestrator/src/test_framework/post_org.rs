@@ -5,10 +5,13 @@ use super::{
     ServerOperationIterationFailed, ServerOperationIterationStarting,
     ServerOperationIterationState, ServerOperationIterationSucceeded, ServerOperationMetrics,
 };
-use crate::servers::ServerHandle;
 use crate::test_framework::{ServerOperationLog, ServerOperationMeasurement};
 use crate::AppState;
-use anyhow::{anyhow, Context, Result};
+use crate::{
+    sample_data::SampleResource,
+    servers::{ServerHandle, ServerPlugin},
+};
+use anyhow::anyhow;
 use async_std::future::timeout;
 use async_std::net::TcpStream;
 use chrono::prelude::*;
@@ -17,7 +20,7 @@ use futures::prelude::*;
 use hdrhistogram::Histogram;
 use http_types::{Method, Request, Url};
 use slog::{info, trace, warn};
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc};
 
 static SERVER_OP_NAME_POST_ORG: &str = "POST /Organization";
 
@@ -78,28 +81,9 @@ async fn benchmark_post_org_for_users(
 
     /* The iterations need to be split across groups, based on the resources (i.e. sample data) that each
      * iteration will consume. */
-    let sample_orgs_count = match app_state.sample_data.load_sample_orgs() {
-        Ok(orgs) => u32::try_from(orgs.len()).unwrap(),
-        Err(err) => {
-            warn!(app_state.logger, "Sample data: unable to load: {}", err);
-            let completed = Utc::now();
-            let iterations_succeeded = app_state.config.iterations - iterations_failed;
-            let execution_duration = completed - started;
-            return ServerOperationMeasurement {
-                concurrent_users,
-                started,
-                completed,
-                execution_duration,
-                iterations_failed: 0,
-                iterations_skipped: app_state.config.iterations,
-                metrics: ServerOperationMetrics::new(
-                    execution_duration,
-                    iterations_succeeded,
-                    histogram,
-                ),
-            };
-        }
-    };
+    let sample_orgs_count: u32 =
+        u32::try_from(app_state.sample_data.iter_orgs(&app_state.logger).count()).unwrap();
+    assert!(sample_orgs_count > 0, "No sample orgs found.");
     let groups = (app_state.config.iterations - 1) / sample_orgs_count + 1;
     for group_index in 0..groups {
         // How many iterations should be run for this group?
@@ -131,34 +115,10 @@ async fn benchmark_post_org_for_users(
         };
 
         // Load the sample data that each iteration will consume an element of.
-        let mut sample_data = match app_state.sample_data.load_sample_orgs() {
-            Ok(sample_data) => sample_data,
-            Err(err) => {
-                warn!(app_state.logger, "Sample data: unable to load: {}", err);
-                let completed = Utc::now();
-                let iterations_succeeded = app_state.config.iterations - iterations_failed;
-                let execution_duration = completed - started;
-                return ServerOperationMeasurement {
-                    concurrent_users,
-                    started,
-                    completed,
-                    execution_duration,
-                    iterations_failed,
-                    iterations_skipped: iterations_remaining,
-                    metrics: ServerOperationMetrics::new(
-                        execution_duration,
-                        iterations_succeeded,
-                        histogram,
-                    ),
-                };
-            }
-        };
-        if u32::try_from(sample_data.len()).unwrap() > group_iterations {
-            sample_data.resize(
-                usize::try_from(group_iterations).unwrap(),
-                sample_data[0].clone(),
-            );
-        }
+        let sample_data = app_state
+            .sample_data
+            .iter_orgs(&app_state.logger)
+            .take(usize::try_from(group_iterations).unwrap());
         info!(
             app_state.logger,
             "Benchmarking POST /Organization: '{}' concurrent users: group '{}/{}' with '{}' iterations: starting...",
@@ -236,7 +196,7 @@ async fn benchmark_post_org_for_users_and_data(
     app_state: &AppState,
     server_handle: &dyn ServerHandle,
     concurrent_users: u32,
-    sample_data: Vec<serde_json::Value>,
+    sample_data: impl Iterator<Item = SampleResource>,
 ) -> Vec<
     std::result::Result<
         ServerOperationIterationState<ServerOperationIterationSucceeded>,
@@ -251,8 +211,13 @@ async fn benchmark_post_org_for_users_and_data(
      */
     let operations = sample_data.into_iter().map(|org| async {
         let operation_state = ServerOperationIterationState::new();
-        let operation =
-            run_operation_post_org(app_state, operation_state.clone(), url.clone(), org);
+        let operation = run_operation_post_org(
+            app_state,
+            server_handle.plugin(),
+            operation_state.clone(),
+            url.clone(),
+            org,
+        );
         let operation = timeout(
             app_state
                 .config
@@ -314,22 +279,14 @@ fn create_org_url(server_handle: &dyn ServerHandle) -> Url {
 /// success or failure.
 async fn run_operation_post_org(
     app_state: &AppState,
+    server_plugin: Arc<dyn ServerPlugin>,
     operation_state: ServerOperationIterationState<ServerOperationIterationStarting>,
     url: Url,
-    org: serde_json::Value,
+    org: SampleResource,
 ) -> std::result::Result<
     ServerOperationIterationState<ServerOperationIterationSucceeded>,
     ServerOperationIterationState<ServerOperationIterationFailed>,
 > {
-    let org_string = match serde_json::to_string(&org) {
-        Ok(org_string) => org_string,
-        Err(err) => {
-            return Err(operation_state
-                .completed()
-                .failed(anyhow!(format!("{}", err))));
-        }
-    };
-
     /*
      * TODO Per the FHIR spec, POST "SHALL" ignore IDs in resources,
      * so any later GETs using the ID in the JSON source would fail.
@@ -339,8 +296,17 @@ async fn run_operation_post_org(
      * Also: Spark noncompliantly throws an error due to the ID being in the
      * resource, so I need to strip that out here, too.
      */
+    let org = server_plugin.fudge_sample_resource(org);
 
-    let org_id = org.get("id").expect("Organization missing ID.").to_string();
+    let org_metadata = &org.metadata.clone();
+    let org_string = match serde_json::to_string(&org.resource_json) {
+        Ok(org_string) => org_string,
+        Err(err) => {
+            return Err(operation_state
+                .completed()
+                .failed(anyhow!(format!("{}", err))));
+        }
+    };
 
     trace!(app_state.logger, "POST '{}': starting...", url);
     let stream = match TcpStream::connect(&*url.socket_addrs(|| None).unwrap()).await {
@@ -369,9 +335,9 @@ async fn run_operation_post_org(
                 };
 
                 let error = anyhow!(
-                    "The POST to '{}' failed for Organization '{}', with status '{}' and body: '{}'",
+                    "The POST to '{}' failed for '{:?}', with status '{}' and body: '{}'",
                     &url,
-                    &org_id,
+                    org_metadata,
                     response_status,
                     response_body
                 );

@@ -15,12 +15,13 @@ use crate::test_framework::{FrameworkOperationLog, FrameworkOperationResult, Fra
 use anyhow::{anyhow, Context, Result};
 use chrono::prelude::*;
 use slog::{self, info, o, Drain};
+use std::sync::Arc;
 
 /// Represents the application's context/state.
 pub struct AppState {
     pub logger: slog::Logger,
     pub config: AppConfig,
-    pub server_plugins: Vec<Box<dyn ServerPlugin>>,
+    pub server_plugins: Vec<Arc<dyn ServerPlugin>>,
     pub sample_data: SampleData,
 }
 
@@ -139,7 +140,7 @@ fn create_app_state() -> Result<AppState> {
     let config = AppConfig::new()?;
 
     // Find all FHIR server implementations that can be tested.
-    let server_plugins: Vec<Box<dyn ServerPlugin>> = servers::create_server_plugins()?;
+    let server_plugins: Vec<Arc<dyn ServerPlugin>> = servers::create_server_plugins()?;
 
     // Setup all global/shared resources.
     let sample_data = sample_data::generate_data(&logger, &config)

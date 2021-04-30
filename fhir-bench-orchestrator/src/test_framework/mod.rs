@@ -10,6 +10,7 @@ use chrono::Duration;
 use hdrhistogram::Histogram;
 use serde::{Deserialize, Serialize};
 use slog_derive::SerdeValue;
+use std::sync::Arc;
 
 pub mod metadata;
 mod post_org;
@@ -36,7 +37,7 @@ impl FrameworkResults {
     /// Params:
     /// * `config`: the application's configuration
     /// * `server_plugins`: the set of [ServerPlugin]s representing the supported FHIR server implementations
-    pub fn new(config: &AppConfig, server_plugins: &[Box<dyn ServerPlugin>]) -> FrameworkResults {
+    pub fn new(config: &AppConfig, server_plugins: &[Arc<dyn ServerPlugin>]) -> FrameworkResults {
         FrameworkResults {
             started: Utc::now(),
             completed: None,

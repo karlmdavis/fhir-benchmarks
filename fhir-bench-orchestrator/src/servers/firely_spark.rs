@@ -2,12 +2,15 @@
 //! [Spark](https://github.com/FirelyTeam/spark) FHIR server, which was originally created by
 //! [Firely](https://fire.ly/) but is now community-maintained. Spark is written in C# and uses
 //! MongoDB as its datastore.
-use crate::servers::{ServerHandle, ServerName, ServerPlugin};
 use crate::AppState;
+use crate::{
+    sample_data::SampleResource,
+    servers::{ServerHandle, ServerName, ServerPlugin},
+};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use slog::{info, warn};
-use std::process::Command;
+use std::{process::Command, sync::Arc};
 use url::Url;
 
 static SERVER_NAME: &str = "Spark FHIR R4 Server";
@@ -35,6 +38,23 @@ impl ServerPlugin for SparkFhirServerPlugin {
 
     async fn launch(&self, app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
         launch_server(&app_state).await
+    }
+
+    /// As detailed in this project's `doc/server-compliance.md` file, Spark non-compliantly rejects POSTs
+    /// of resources with an ID. This method strips those IDs out, so that testing can proceed, as otherwise
+    /// there's really not much we actually _can_ test.
+    ///
+    /// Parameters:
+    /// * `sample_org`: a sample `Organization` JSON resource that has been generated to test this server
+    fn fudge_sample_resource(&self, mut sample_resource: SampleResource) -> SampleResource {
+        // Strip out the "id" element.
+        sample_resource
+            .resource_json
+            .as_object_mut()
+            .expect("JSON resource was empty")
+            .remove("id");
+
+        sample_resource
     }
 }
 
@@ -82,7 +102,13 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
     }
 
     // The server containers have now been started, though they're not necessarily ready yet.
-    let server_handle = SparkFhirServerHandle {};
+    let server_plugin = app_state
+        .server_plugins
+        .iter()
+        .find(|p| p.server_name().0 == SERVER_NAME)
+        .expect("Unable to find server plugin")
+        .clone();
+    let server_handle = SparkFhirServerHandle { server_plugin };
 
     // Wait (up to a timeout) for the server to be ready.
     match wait_for_ready(app_state, &server_handle).await {
@@ -139,10 +165,16 @@ async fn probe_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle)
 }
 
 /// Represents a launched instance of the Spark FHIR server.
-pub struct SparkFhirServerHandle {}
+pub struct SparkFhirServerHandle {
+    server_plugin: Arc<dyn ServerPlugin>,
+}
 
 #[async_trait]
 impl ServerHandle for SparkFhirServerHandle {
+    fn plugin(&self) -> Arc<dyn ServerPlugin> {
+        self.server_plugin.clone()
+    }
+
     fn base_url(&self) -> url::Url {
         Url::parse("http://localhost:5555/fhir/").expect("Unable to parse URL.")
     }

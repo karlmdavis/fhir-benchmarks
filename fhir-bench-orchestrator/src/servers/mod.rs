@@ -1,9 +1,10 @@
 //! TODO
 
-use crate::AppState;
+use crate::{sample_data::SampleResource, AppState};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use url::Url;
 
 mod firely_spark;
@@ -40,6 +41,9 @@ impl From<&str> for ServerName {
 /// contexts and otherwise borrowed across threads.
 #[async_trait]
 pub trait ServerHandle: Sync {
+    /// Return the [ServerPlugin] that this [ServerHandle] is an instance of.
+    fn plugin(&self) -> Arc<dyn ServerPlugin>;
+
     /// Return the base URL for the running FHIR server, e.g. `http://localhost:8080/foo/`.
     fn base_url(&self) -> Url;
 
@@ -66,7 +70,7 @@ pub trait ServerHandle: Sync {
 /// Implementations are required to be [Sync](core::marker::Sync), so that they may be used in `async`
 /// contexts and otherwise borrowed across threads.
 #[async_trait]
-pub trait ServerPlugin: Sync {
+pub trait ServerPlugin: Sync + Send {
     /// Returns the unique `ServerName` for this `ServerPlugin`.
     fn server_name(&self) -> &ServerName;
 
@@ -83,15 +87,35 @@ pub trait ServerPlugin: Sync {
     /// Parameters:
     /// * `app_state`: the application's [AppState]
     async fn launch(&self, app_state: &AppState) -> Result<Box<dyn ServerHandle>>;
+
+    /// This is an escape hatch of sorts for non-compliant servers, which allows them to fudge/hack sample
+    /// data a bit, such that it can be successfully POST'd or whatnot.
+    ///
+    /// Parameters:
+    /// * `sample_org`: a sample `Organization` JSON resource that has been generated to test this server
+    fn fudge_sample_resource(&self, sample_resource: SampleResource) -> SampleResource {
+        /*
+         * Design thoughts:
+         * * In general, I'm not a fan of "fixing" noncompliant servers: I'd rather let them fail and have
+         *   that reflected in their benchmark results. Sometimes, though, I'm MORE interested in seeing
+         *   their performance. This is a tricky balance to strike, and so all such hacks need to be
+         *   documented in the project's `doc/server-compliance.md` file.
+         */
+
+        /*
+         * Most servers are compliant, thankfully, so we provide this default no-op implementation.
+         */
+        sample_resource
+    }
 }
 
 /// Declares (and provides instances of) all of the `ServerPlugin` impls that are available to the
 /// application.
-pub fn create_server_plugins() -> Result<Vec<Box<dyn ServerPlugin>>> {
-    let mut servers: Vec<Box<dyn ServerPlugin>> = vec![];
+pub fn create_server_plugins() -> Result<Vec<Arc<dyn ServerPlugin>>> {
+    let mut servers: Vec<Arc<dyn ServerPlugin>> = vec![];
 
-    servers.push(Box::new(hapi_jpa::HapiJpaFhirServerPlugin::new()));
-    servers.push(Box::new(firely_spark::SparkFhirServerPlugin::new()));
+    servers.push(Arc::new(hapi_jpa::HapiJpaFhirServerPlugin::new()));
+    servers.push(Arc::new(firely_spark::SparkFhirServerPlugin::new()));
 
     Ok(servers)
 }

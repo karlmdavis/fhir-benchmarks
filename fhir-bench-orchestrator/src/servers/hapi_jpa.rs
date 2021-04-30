@@ -4,7 +4,7 @@ use crate::AppState;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use slog::{info, warn};
-use std::process::Command;
+use std::{process::Command, sync::Arc};
 use url::Url;
 
 static SERVER_NAME: &str = "HAPI FHIR JPA Server";
@@ -58,7 +58,13 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
         }
 
         // The server containers have now been started, though they're not necessarily ready yet.
-        let server_handle = HapiJpaFhirServerHandle {};
+        let server_plugin = app_state
+            .server_plugins
+            .iter()
+            .find(|p| p.server_name().0 == SERVER_NAME)
+            .expect("Unable to find server plugin")
+            .clone();
+        let server_handle = HapiJpaFhirServerHandle { server_plugin };
 
         // Wait (up to a timeout) for the server to be ready.
         match wait_for_ready(app_state, &server_handle).await {
@@ -116,10 +122,16 @@ async fn probe_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle)
 }
 
 /// Represents a launched instance of the HAPI FHIR JPA server.
-pub struct HapiJpaFhirServerHandle {}
+pub struct HapiJpaFhirServerHandle {
+    server_plugin: Arc<dyn ServerPlugin>,
+}
 
 #[async_trait]
 impl ServerHandle for HapiJpaFhirServerHandle {
+    fn plugin(&self) -> Arc<dyn ServerPlugin> {
+        self.server_plugin.clone()
+    }
+
     fn base_url(&self) -> url::Url {
         Url::parse("http://localhost:8080/hapi-fhir-jpaserver/fhir/").expect("Unable to parse URL.")
     }
