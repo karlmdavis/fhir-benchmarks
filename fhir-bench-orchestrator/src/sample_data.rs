@@ -352,12 +352,20 @@ fn find_sample_data(data_dir: PathBuf) -> Result<SampleData> {
 
         if file_name.starts_with("hospitalInformation") {
             if hospitals.is_some() {
-                return Err(anyhow!("multiple hospitalInformation files"));
+                return Err(anyhow!(
+                    "multiple hospitalInformation files: '{:?}' and '{:?}'",
+                    file,
+                    hospitals
+                ));
             }
             hospitals = Some(file.path());
         } else if file_name.starts_with("practitionerInformation") {
             if practitioners.is_some() {
-                return Err(anyhow!("multiple practitionerInformation files"));
+                return Err(anyhow!(
+                    "multiple practitionerInformation files: '{:?}' and '{:?}'",
+                    file,
+                    practitioners
+                ));
             }
             practitioners = Some(file.path());
         } else if file_name == "config.json" {
