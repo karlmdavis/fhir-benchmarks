@@ -82,6 +82,14 @@ fn benchmark_small() {
                 );
 
                 for measurement in operation.measurements {
+                    if server_result.server.0 == "Spark FHIR R4 Server"
+                        && measurement.concurrent_users > 1
+                    {
+                        // Spark has a known issue where it goes boom for some concurrent operations:
+                        // <https://github.com/FirelyTeam/spark/issues/377>.
+                        continue;
+                    }
+
                     // FIXME Remove this check once the framework is more solid. It's not tenable long-term as
                     // some servers will be unstable some of the time and we can't control that.
                     assert_eq!(
