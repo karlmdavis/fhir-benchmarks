@@ -40,9 +40,8 @@ docker build --file ./Dockerfile.synthea -t "${IMAGE_TAG}" --cache-from docker.p
 
 # Run Synthea, with the specified options.
 target="$(pwd)/target"
-ls -la
+ls -la 1>&2
 if [[ ! -d "${target}" ]]; then mkdir "${target}"; fi
-ls -la
 docker run \
   --rm \
   --mount source="${target}",target="/synthea/target/",type=bind \
