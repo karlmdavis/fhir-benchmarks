@@ -89,33 +89,37 @@ impl AppConfig {
 
     /// Returns the root directory for the benchmarks project; the Git repo's top-level directory.
     pub fn benchmark_dir(&self) -> Result<PathBuf> {
-        // For now, this is hard-coded to check a couple of likely scenarios:
-        //
-        // 1. Someone is running from the `fhir-bench-orchestrator` module, like might happen if they are
-        //    running a specific test from their IDE.
-        // 2. Someone is running from the Git project's root directory, like they might from a terminal.
-        let current_dir =
-            std::env::current_dir().context("unable to retrieve current directory")?;
+        benchmark_dir()
+    }
+}
 
-        if current_dir
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            == Some("fhir-bench-orchestrator".to_string())
-        {
-            Ok(current_dir
-                .parent()
-                .expect("Unable to get module parent directory.")
-                .into())
-        } else if current_dir
-            .read_dir()?
-            .any(|e| e.is_ok() && e.as_ref().unwrap().file_name() == ".git")
-        {
-            Ok(current_dir)
-        } else {
-            Err(anyhow!(
-                "Unable to find benchmark directory from current directory: '{:?}'",
-                current_dir
-            ))
-        }
+/// Returns the root directory for the benchmarks project; the Git repo's top-level directory.
+pub fn benchmark_dir() -> Result<PathBuf> {
+    // For now, this is hard-coded to check a couple of likely scenarios:
+    //
+    // 1. Someone is running from the `fhir-bench-orchestrator` module, like might happen if they are
+    //    running a specific test from their IDE.
+    // 2. Someone is running from the Git project's root directory, like they might from a terminal.
+    let current_dir = std::env::current_dir().context("unable to retrieve current directory")?;
+
+    if current_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        == Some("fhir-bench-orchestrator".to_string())
+    {
+        Ok(current_dir
+            .parent()
+            .expect("Unable to get module parent directory.")
+            .into())
+    } else if current_dir
+        .read_dir()?
+        .any(|e| e.is_ok() && e.as_ref().unwrap().file_name() == ".git")
+    {
+        Ok(current_dir)
+    } else {
+        Err(anyhow!(
+            "Unable to find benchmark directory from current directory: '{:?}'",
+            current_dir
+        ))
     }
 }

@@ -143,7 +143,7 @@ fn create_app_state() -> Result<AppState> {
     let server_plugins: Vec<Arc<dyn ServerPlugin>> = servers::create_server_plugins()?;
 
     // Setup all global/shared resources.
-    let sample_data = sample_data::generate_data(&logger, &config)
+    let sample_data = sample_data::generate_data_using_config(&logger, &config)
         .context("Error when generating sample data.")?;
 
     Ok(AppState {

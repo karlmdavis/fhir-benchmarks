@@ -256,22 +256,51 @@ impl SampleData {
 /// * `config`: the application's configuration
 ///
 /// Returns the [SampleData] that was generated.
-pub fn generate_data(logger: &Logger, config: &AppConfig) -> Result<SampleData> {
-    let synthea_dir = config.benchmark_dir()?.join("synthetic-data");
+pub fn generate_data_using_config(logger: &Logger, config: &AppConfig) -> Result<SampleData> {
+    generate_data(
+        logger,
+        config.benchmark_dir()?.join("synthetic-data").as_path(),
+        config.population_size,
+        config
+            .benchmark_dir()?
+            .join("synthetic-data")
+            .join("target")
+            .as_path(),
+    )
+}
+
+/// Generates the sample data needed by the application, as specified/configured in [AppConfig].
+///
+/// Parameters:
+/// * `logger`: send log events here
+/// * `synthea_dir`: the `synthetic-data` directory in this project, which contains the Synthea application
+///    to use
+/// * `population_size`: the target synthetic population size to generate, which Synthea will likely
+///    overshoot a bit
+/// * `target_dir`: the target directory to output data to (actually the parent of the real target, as
+///    Synthea will output to a child `fhir` directory in here)
+///
+/// Returns the [SampleData] that was generated.
+pub fn generate_data(
+    logger: &Logger,
+    synthea_dir: &Path,
+    population_size: u32,
+    target_dir: &Path,
+) -> Result<SampleData> {
     if !synthea_dir.is_dir() {
         return Err(anyhow!(format!(
             "unable to read directory: '{:?}'",
             synthea_dir
         )));
     }
-    let data_dir = &synthea_dir.join("target").join("fhir");
+    let data_dir = &target_dir.join("fhir");
 
     /*
      * Check to see if there is already an existing data set present, and whether or not it can be
      * re-used, if so.
      */
     let config_new: serde_json::Value = json!({
-        "population_size": config.population_size,
+        "population_size": population_size,
     });
     let config_path = data_dir.join("config.json");
     if config_path.is_file() {
@@ -306,7 +335,12 @@ pub fn generate_data(logger: &Logger, config: &AppConfig) -> Result<SampleData> 
         return Err(anyhow!(format!("unable to read file: '{:?}'", synthea_bin)));
     }
     let synthea_process = Command::new(synthea_bin)
-        .args(&["-p", &config.population_size.to_string()])
+        .args(&[
+            "-p",
+            &population_size.to_string(),
+            "-t",
+            target_dir.to_str().expect("Invalid target directory."),
+        ])
         .current_dir(&synthea_dir)
         .output()
         .context("Failed to run 'synthetic-data/generate-synthetic-data.sh'.")?;
@@ -386,22 +420,13 @@ fn find_sample_data(data_dir: PathBuf) -> Result<SampleData> {
 /// Unit-ish tests for [crate::sample_data].
 #[cfg(test)]
 mod tests {
-    use super::SampleResource;
-    use crate::{config::AppConfig, sample_data::SampleResourceMetadata};
+    use crate::sample_data::{SampleResource, SampleResourceMetadata};
     use anyhow::Result;
     use slog::{self, o, Drain};
     use std::collections::HashMap;
 
     /// Builds the root Logger for tests to use.
     fn create_test_logger() -> slog::Logger {
-        // let drain = slog_json::Json::new(std::io::stderr())
-        //     .set_pretty(true)
-        //     .add_default_keys()
-        //     .build()
-        //     .fuse();
-        // let drain = slog_async::Async::new(drain).build().fuse();
-
-        // slog::Logger::root(drain, o!())
         let logger = {
             let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
             let drain = slog_term::FullFormat::new(decorator).build().fuse();
@@ -415,8 +440,14 @@ mod tests {
     #[test]
     fn generate_data() -> Result<()> {
         let logger = create_test_logger();
-        let app_config = AppConfig::new()?;
-        let sample_data = super::generate_data(&logger, &app_config);
+        let benchmark_dir = crate::config::benchmark_dir()?;
+        let target_dir = tempfile::tempdir()?;
+        let sample_data = super::generate_data(
+            &logger,
+            benchmark_dir.join("synthetic-data").as_path(),
+            10,
+            target_dir.path(),
+        );
 
         assert!(
             sample_data.is_ok(),
@@ -432,14 +463,20 @@ mod tests {
     #[test]
     fn iter_orgs() -> Result<()> {
         let logger = create_test_logger();
-        let app_config = AppConfig::new()?;
-        let sample_data = super::generate_data(&logger, &app_config)?;
+        let benchmark_dir = crate::config::benchmark_dir()?;
+        let target_dir = tempfile::tempdir()?;
+        let sample_data = super::generate_data(
+            &logger,
+            benchmark_dir.join("synthetic-data").as_path(),
+            10,
+            target_dir.path(),
+        )?;
         let orgs: Vec<SampleResource> = sample_data.iter_orgs(&logger).collect();
 
         // Synthea generates randomized output, but our default config should always produce at least this
         // many orgs.
         assert!(
-            orgs.len() > 100,
+            orgs.len() > 20,
             "Not enough orgs found: orgs.len()='{}'",
             orgs.len()
         );
