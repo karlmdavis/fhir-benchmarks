@@ -1,7 +1,6 @@
 [package]
 name = "fhir-bench-orchestrator"
 version = "0.1.0"
-resolver = "2"
 build = "build.rs"
 authors = ["Karl M. Davis <karl@justdavis.com>"]
 edition = "2018"
