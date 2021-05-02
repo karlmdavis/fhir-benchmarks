@@ -27,6 +27,9 @@ pub struct FrameworkResults {
     /// The configuration that the benchmark framework was run with.
     pub config: AppConfig,
 
+    /// Details on the system used to run the benchmarks.
+    pub benchmark_metadata: FrameworkMetadata,
+
     /// The [ServerResult] for each of the supported FHIR servers that a benchmark was attempted for.
     pub servers: Vec<ServerResult>,
 }
@@ -42,6 +45,7 @@ impl FrameworkResults {
             started: Utc::now(),
             completed: None,
             config: config.clone(),
+            benchmark_metadata: FrameworkMetadata::default(),
             servers: server_plugins
                 .iter()
                 .map(|p| p.server_name())
@@ -53,6 +57,50 @@ impl FrameworkResults {
     /// Returns the `ServerResult` for the specified `ServerName`.
     pub fn get_mut(&mut self, server_name: &ServerName) -> Option<&mut ServerResult> {
         self.servers.iter_mut().find(|s| s.server == *server_name)
+    }
+}
+
+/// Stores details on the system used to run the benchmarks.
+#[derive(Deserialize, SerdeValue, Clone, Serialize)]
+pub struct FrameworkMetadata {
+    /// Whether or not the framework was compiled in debug or release mode.
+    pub cargo_profile: String,
+
+    /// The Git branch that was built.
+    pub git_branch: String,
+
+    /// The Git version that was built.
+    pub git_semver: String,
+
+    /// The specific Git commit ID that was built.
+    pub git_sha: String,
+
+    /// The number of CPU cores available to the system (which may include virtual/hyperthread cores).
+    pub cpu_core_count: u16,
+
+    /// The brand name of the CPUs.
+    pub cpu_brand_name: String,
+
+    // The CPU frequency.
+    pub cpu_frequency: u16,
+}
+
+impl Default for FrameworkMetadata {
+    /// Constructs a new [FrameworkMetadata] instance.
+    fn default() -> Self {
+        FrameworkMetadata {
+            cargo_profile: env!("VERGEN_CARGO_PROFILE").to_string(),
+            git_branch: env!("VERGEN_GIT_BRANCH").to_string(),
+            git_semver: env!("VERGEN_GIT_SEMVER").to_string(),
+            git_sha: env!("VERGEN_GIT_SHA").to_string(),
+            cpu_core_count: env!("VERGEN_SYSINFO_CPU_CORE_COUNT")
+                .parse::<u16>()
+                .expect("Unable to parse CPU core count."),
+            cpu_brand_name: env!("VERGEN_SYSINFO_CPU_BRAND").to_string(),
+            cpu_frequency: env!("VERGEN_SYSINFO_CPU_FREQUENCY")
+                .parse::<u16>()
+                .expect("Unable to parse CPU frequency."),
+        }
     }
 }
 
@@ -384,12 +432,12 @@ pub async fn run_operations(
 /// as otherwise serde serialization does not preserve field order.
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
     use crate::test_framework::{
         FrameworkOperationLog, FrameworkOperationResult, FrameworkResults, ServerOperationLog,
         ServerOperationMeasurement, ServerOperationMetrics, ServerResult,
     };
     use crate::util::serde_duration_iso8601;
+    use crate::{config::AppConfig, test_framework::FrameworkMetadata};
     use anyhow::Result;
     use chrono::prelude::*;
     use chrono::Duration;
@@ -529,6 +577,15 @@ mod tests {
                 "concurrency_levels": [1, 10],
                 "population_size": 1,
             },
+            "benchmark_metadata": {
+                "cargo_profile": "release",
+                "git_branch": "main",
+                "git_semver": "1.0-foo",
+                "git_sha": "foo",
+                "cpu_core_count": 64,
+                "cpu_brand_name": "Very Awesome CPU",
+                "cpu_frequency": 42,
+            },
             "servers": [{
                 "server": "Fake HAPI",
                 "launch": {
@@ -581,6 +638,15 @@ mod tests {
                 operation_timeout: Duration::milliseconds(1000),
                 concurrency_levels: vec![1, 10],
                 population_size: 1,
+            },
+            benchmark_metadata: FrameworkMetadata {
+                cargo_profile: "release".into(),
+                git_branch: "main".into(),
+                git_semver: "1.0-foo".into(),
+                git_sha: "foo".into(),
+                cpu_core_count: 64,
+                cpu_brand_name: "Very Awesome CPU".into(),
+                cpu_frequency: 42,
             },
             servers: vec![ServerResult {
                 server: SERVER_NAME_FAKE.into(),

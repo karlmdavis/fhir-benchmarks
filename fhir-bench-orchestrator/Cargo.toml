@@ -2,6 +2,7 @@
 name = "fhir-bench-orchestrator"
 version = "0.1.0"
 resolver = "2"
+build = "build.rs"
 authors = ["Karl M. Davis <karl@justdavis.com>"]
 edition = "2018"
 
@@ -66,3 +67,12 @@ assert_cmd = "1"
 
 # Used in tests, to generate random temp dirs.
 tempfile = "3"
+
+
+[build-dependencies]
+
+# Used to pass build environment metadata (e.g. Git commit ID) into the compiler.
+vergen = "5"
+
+# Easier idiomatic error handling.
+anyhow = "1"
