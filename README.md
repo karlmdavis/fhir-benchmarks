@@ -47,6 +47,7 @@ First, ensure you have installed the following prerequisites:
 * [Rust](https://www.rust-lang.org/) >= v1.51.0, as installed via [rustup](https://www.rust-lang.org/learn/get-started).
 * [Docker](https://www.docker.com/) >= v20.10.6
 * [Docker Compose](https://docs.docker.com/compose/) >= v1.27.4
+* (Ubuntu only) install `libssl-dev`
 
 Then, run these commands to clone, build, and run the benchmark suite's tests:
 
