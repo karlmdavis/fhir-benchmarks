@@ -53,30 +53,31 @@ table.measurement {
     border-right: 1px solid $border;
     border-bottom: 1px solid $border;
 
-    table-layout: fixed;
-    min-width: 70em;
-
     td {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    col.server {
-        width: 20%;
-    }
+    @include desktop {
+        table-layout: fixed;
+        min-width: 70em;
+        col.server {
+            width: 20%;
+        }
 
-    col.throughput_per_second,
-    col.latency_millis_mean {
-        width: 10%;
-    }
+        col.throughput_per_second,
+        col.latency_millis_mean {
+            width: 10%;
+        }
 
-    col.failures {
-        width: 7%;
-    }
+        col.failures {
+            width: 7%;
+        }
 
-    col.rank {
-        width: 53%;
+        col.rank {
+            width: 53%;
+        }
     }
 
     .latency_toggle {
