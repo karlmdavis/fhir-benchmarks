@@ -4,7 +4,7 @@
 	branch = fhir-benchmarks
 [submodule "fhir-bench-site/sass_modules/bulma"]
 	path = fhir-bench-site/sass_modules/bulma
-	url = git@github.com:jgthms/bulma.git
+	url = https://github.com/jgthms/bulma.git
 [submodule "fhir-bench-site/sass_modules/bulma_social"]
 	path = fhir-bench-site/sass_modules/bulma_social
-	url = git@github.com:aldi/bulma-social.git
+	url = https://github.com/aldi/bulma-social.git
