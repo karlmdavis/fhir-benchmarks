@@ -29,10 +29,10 @@ h1, h2, h3, h4, h5, h6, nav {
 
 nav {
     font-size: 1.5em;
-    border-bottom: 1px;
+    border-bottom: 2px;
 
     .navbar-item.active {
-        border-bottom: 1px solid $primary;
+        border-bottom: 2px solid $primary;
     }
 }
 
@@ -45,7 +45,7 @@ section.operation .tabs {
 }
 
 thead tr {
-    background-color: $scheme-invert-bis;
+    background-color: $scheme-main-ter;
 }
 
 table.measurement {
@@ -54,6 +54,7 @@ table.measurement {
     border-bottom: 1px solid $border;
 
     table-layout: fixed;
+    min-width: 70em;
 
     td {
         overflow: hidden;

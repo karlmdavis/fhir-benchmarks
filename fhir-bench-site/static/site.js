@@ -221,15 +221,16 @@ function drawChart(dataTable, targetElement) {
     { v: 10000000, f: '99.99999%' },
     { v: 100000000, f: '99.999999%' }];
   
-  //let maxPercentile = 1000000;
-  //power(10, ceil(log(id)))
   // Round up to the max ticks.v value needed, using base-10 logs.
   let maxPercentile = Math.pow(10, Math.ceil(Math.log10(dataTable.getColumnRange(0).max)));
-  //let maxPercentile = dataTable.getColumnRange(0).max;
+
+  // The table rows alternate color, so grab the right background color.
+  let backgroundColor = targetElement.style.backgroundColor;
 
   let options = {
     title: 'Latency by Percentile Distribution',
     height: 300,
+    backgroundColor: backgroundColor,
     hAxis: {
       title: "Percentile",
       minValue: 1,
