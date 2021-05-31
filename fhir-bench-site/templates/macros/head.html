@@ -1,0 +1,9 @@
+{% macro title() %}
+{% if page and page.title %}
+FHIR Benchmarks: {{ page.title | safe }}
+{% elif section and section.title %}
+FHIR Benchmarks: {{ section.title | safe }}
+{% else %}
+FHIR Benchmarks
+{% endif %}
+{% endmacro title %}

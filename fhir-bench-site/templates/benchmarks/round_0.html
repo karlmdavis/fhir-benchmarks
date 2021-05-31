@@ -1,0 +1,129 @@
+{% extends "page.html" %}
+
+{% block content_body %}
+      <div class="content">
+        {{ page.content | safe }}
+      </div>
+
+      {# The `benchmark-*.json` file is a copy of the desired benchmark result, as Zola won't allow
+       # `load_data(...)` to reference files outside of the site directory, even if they're symlinked. For
+       #  example:
+       #
+       #     $ cd content/benchmarks/round_0/
+       #     $ cp ../../../../results/benchmark-2021-05-02T11:48:11-04:00.json ./
+       #}
+      {% set benchmark = load_data(path="content/benchmarks/round_0/benchmark-2021-05-02T11:48:11-04:00.json") %}
+
+      <p>
+        These results were collected on {{ benchmark.started | date }},
+        with a target iteration count of {{ benchmark.config.iterations }}
+        and a sythetic population size of {{ benchmark.config.population_size }}.
+      </p>
+
+      {# Grab an arbitrary server to use when building the page structure. #}
+      {% set server_template = benchmark.servers.0 %}
+
+      {% for operation in server_template.operations %}
+
+      {# Remember the operation's index so we can get back to it when looping through all the servers. #}
+      {% set operation_index = loop.index0 %}
+
+      <section class="operation" data-operation="{{ operation.operation | safe }}">
+        <h2 class="title is-2">Operation: {{ operation.operation | safe }}</h2>
+        <div class="tabs is-boxed is-small">
+          <ul>
+            {% for measurement in operation.measurements | reverse %}
+            <li
+                class="{% if loop.first %}is-active{% endif %}""
+                data-concurrent-users="{{ measurement.concurrent_users }}">
+              <a
+                 data-operation="{{ operation.operation | safe }}"
+                 data-concurrent-users="{{ measurement.concurrent_users }}">
+                {{ measurement.concurrent_users | safe }} Users
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        {% for measurement in operation.measurements | reverse %}
+
+        {# Remember the measurement's index so we can get back to it when looping through all the servers. #}
+        {% set measurement_index = loop.index0 %}
+
+        <table
+               class="measurement table is-bordered is-striped is-hoverable is-fullwidth{% if not loop.first %} is-hidden{% endif %}"
+               data-concurrent-users="{{ measurement.concurrent_users }}">
+          <colgroup>
+            <col class="server" />
+            <col class="throughput_per_second" />
+            <col class="rank" />
+            <col class="failures" />
+            <col class="latency_millis_mean" />
+            {# Saving for later.
+            <col class="latency_millis_p50" />
+            <col class="latency_millis_p90" />
+            <col class="latency_millis_p99" />
+            <col class="latency_millis_p999" />
+            <col class="latency_millis_p100" />
+            #}
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Server</th>
+              <th><abbr title="Throughput (requests per second)">Throughput</abbr></th>
+              <th>Rank</th>
+              <th>Failures</th>
+              <th><abbr title="Latency (mean, milliseconds)">Latency</abbr></th>
+              {# Saving for later.
+              <th><abbr title="Latency (median, milliseconds)">Median</abbr></th>
+              <th><abbr title="Latency (90th percentile, milliseconds)">p90</abbr></th>
+              <th><abbr title="Latency (99th percentile, milliseconds)">p99</abbr></th>
+              <th><abbr title="Latency (99.9th percentile, milliseconds)">p999</abbr></th>
+              <th><abbr title="Latency (max, milliseconds)">Max</abbr></th>
+              #}
+            </tr>
+          </thead>
+          <tbody>
+            {% for server in benchmark.servers %}
+
+            {# Grab the measurement for the current server and operation. #}
+            {% set operation_server = server.operations[operation_index] %}
+            {% set measurement_server = operation_server.measurements[measurement_index] %}
+
+            {# Tera won't let us create new objects, only literals and arrays.
+               The sorting will have to be done in JS.
+               Need to watch out for run-before-DOM issues with JS. #}
+
+            <tr>
+              <th>{{ server.server }}</th>
+              <td><abbr title="{{ measurement_server.metrics.throughput_per_second }}">{{ measurement_server.metrics.throughput_per_second | round(precision=2) }}</abbr></td>
+              <td>
+                <span class="throughput_percent_bar"></span>
+                <span class="throughput_percent_text"></span>
+              </td>
+              <td>{{ measurement_server.iterations_failed + measurement_server.iterations_skipped }}</td>
+              <td>
+                <abbr title="{{ measurement_server.metrics.latency_millis_mean }}">{{ measurement_server.metrics.latency_millis_mean | round(precision=2) }}</abbr>
+                <span
+                      class="latency_toggle icon is-small"
+                      data-latency-millis-p50="{{ measurement_server.metrics.latency_millis_p50 }}"
+                      data-latency-millis-p90="{{ measurement_server.metrics.latency_millis_p90 }}"
+                      data-latency-millis-p99="{{ measurement_server.metrics.latency_millis_p99 }}"
+                      data-latency-millis-p999="{{ measurement_server.metrics.latency_millis_p999 }}"
+                      data-latency-millis-p100="{{ measurement_server.metrics.latency_millis_p100 }}"
+                      data-latency-histogram="{{ measurement_server.metrics.latency_histogram }}">
+                    <i class="fas fa-angle-down" aria-hidden="true"></i>
+                </span>
+              </td>
+              {# Saving for later.
+              #}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endfor %} {# end of measurements #}
+
+      </section>
+      {% endfor %} {# end of operations #}
+{% endblock content_body %}

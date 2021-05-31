@@ -1,0 +1,57 @@
+{% import 'macros/head.html' as macros_head %}
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ macros_head::title() }}</title>
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <link href="https://fonts.googleapis.com/css2?family=Alegreya+Sans+SC&family=Roboto&display=swap" rel="stylesheet">
+    <script src="https://kit.fontawesome.com/036a018167.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="{{ get_url(path="site.css") | safe }}">
+  </head>
+  <body>
+    <nav class="navbar is-light" role="navigation" aria-label="main navigation">
+      <div class="navbar-brand">
+        <a class="navbar-item" href="https://fhir-benchmarks.com">
+          <img src="{{ get_url(path="logo/fhir-benchmarks-logo-no-background.svg") }}" height="28">
+        </a>
+    
+        <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="navbar">
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </a>
+      </div>
+    
+      <div id="navbar" class="navbar-menu">
+        <div class="navbar-start">
+          {% set path_safe = current_path | default(value="") %}
+          <a class="navbar-item{% if path_safe is starting_with("/benchmarks") %} active{% endif %}" href="/benchmarks/round-0">
+            Benchmarks
+          </a>
+          <a class="navbar-item{% if path_safe is starting_with("/about") %} active{% endif %}" href="/about">
+            about
+          </a>
+        </div>
+        <div class="navbar-end">
+          <div class="navbar-item">
+            <div class="buttons">
+              <a class="button is-github is-info" href="https://github.com/karlmdavis/fhir-benchmarks">
+                <span class="icon">
+                  <i class="fab fa-github"></i>
+                </span>
+                <span>GitHub</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </nav>
+    {% block content %}{% endblock content %}
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script src="{{ get_url(path="pako-js-2.0.3/pako.min.js") }}"></script>
+    <script src="https://github.com/HdrHistogram/HdrHistogramJS/releases/download/v2.0.1/hdrhistogram.umd.js"></script>
+    <script src="{{ get_url(path="site.js") }}"></script>
+  </body>
+</html>

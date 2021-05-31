@@ -1,0 +1,96 @@
+@charset "utf-8";
+
+/*
+ * Before pulling in the CSS framework itself, redefine some of its `!default` variables.
+ */
+// Nothing yet.
+
+/*
+ * Pull in the [Bulma](https://bulma.io) CSS framework.
+ *
+ * It's imported from a Git submodule in `sass_modules`, as this lets us control what files Zola tries to
+ * compile (otherwise, it'll try to compile everything in there, including the invalid examples in Bulma's
+ * documentation).
+ */
+@import "../sass_modules/bulma/bulma.sass";
+
+/*
+ * Pull in the [Bulma-Social](https://aldi.github.io/bulma-social) CSS framework.
+ */
+ @import "../sass_modules/bulma_social/bulma-social.sass";
+
+body, button, input, optgroup, select, textarea {
+    font-family: Roboto,sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6, nav {
+    font-family: 'Alegreya Sans SC', sans-serif;
+}
+
+nav {
+    font-size: 1.5em;
+    border-bottom: 1px;
+
+    .navbar-item.active {
+        border-bottom: 1px solid $primary;
+    }
+}
+
+section.server, section.operation {
+    margin-top: 1.0rem;
+}
+
+section.operation .tabs {
+    margin-bottom: 0;
+}
+
+thead tr {
+    background-color: $scheme-invert-bis;
+}
+
+table.measurement {
+    border-left: 1px solid $border;
+    border-right: 1px solid $border;
+    border-bottom: 1px solid $border;
+
+    table-layout: fixed;
+
+    td {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    col.server {
+        width: 20%;
+    }
+
+    col.throughput_per_second,
+    col.latency_millis_mean {
+        width: 10%;
+    }
+
+    col.failures {
+        width: 7%;
+    }
+
+    col.rank {
+        width: 53%;
+    }
+
+    .latency_toggle {
+        cursor: pointer;
+    }
+
+    .throughput_percent_bar {
+        display: inline-block;
+        background-color: $info;
+        height: 0.8em;
+        vertical-align: baseline;
+        border-radius: 4px;
+    }
+
+    .throughput_percent_text {
+        text-align: right;
+    }
+}
