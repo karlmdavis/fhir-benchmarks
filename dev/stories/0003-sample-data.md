@@ -1,4 +1,4 @@
-# Synthetic Data
+# User Story: Sample Data
 
 As a reader/consumer of benchmarks,
   I need the data used by the FHIR servers when they're being genchmarked to be realistic,
