@@ -47,13 +47,27 @@ First, ensure you have installed the following prerequisites:
 * [Rust](https://www.rust-lang.org/) >= v1.51.0, as installed via [rustup](https://www.rust-lang.org/learn/get-started).
 * [Docker](https://www.docker.com/) >= v20.10.6
 * [Docker Compose](https://docs.docker.com/compose/) >= v1.27.4
-* (Ubuntu only) install `libssl-dev`
+* On Ubuntu 20.04, these additional steps are also required:
+    * Install some additional dependencies:
+
+        ```
+        $ sudo apt install libssl-dev pkg-config
+        ```
+
+    * Give the current user permissions to run `docker` without `sudo`:
+
+        ```
+        $ sudo usermod -aG docker $USER
+        ```
 
 Then, run these commands to clone, build, and run the benchmark suite's tests:
 
 ```shell
 $ git clone https://github.com/karlmdavis/fhir-benchmarks.git
 $ cd fhir-benchmarks
+$ # Pull in the submodules:
+$ git submodule init
+$ git submodule sync
 $ # Build in debug mode and run tests:
 $ cargo test
 $ # Build in release mode and run benchmarks:
