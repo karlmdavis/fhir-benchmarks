@@ -25,6 +25,16 @@ pub struct AppState {
     pub sample_data: SampleData,
 }
 
+impl AppState {
+    /// Returns the [ServerPlugin] matching the specified name.
+    fn find_server_plugin(&self, server_name: &str) -> Option<Arc<dyn ServerPlugin>> {
+        self.server_plugins
+            .iter()
+            .find(|p| p.server_name().0 == server_name)
+            .cloned()
+    }
+}
+
 /// The library crate's primary entry point: this does all the things.
 pub async fn run_bench_orchestrator() -> Result<()> {
     // Initialize the app's state.

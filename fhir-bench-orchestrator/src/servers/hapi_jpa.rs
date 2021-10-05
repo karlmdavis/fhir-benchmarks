@@ -4,6 +4,7 @@ use crate::AppState;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use slog::{info, warn};
+use std::path::{Path, PathBuf};
 use std::{process::Command, sync::Arc};
 use url::Url;
 
@@ -30,6 +31,8 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
     }
 
     async fn launch(&self, app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
+        let server_work_dir = server_work_dir(&app_state.config.benchmark_dir()?);
+
         /*
          * Build and launch our submodule'd fork of the sample JPA server.
          *
@@ -40,12 +43,7 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
             .args(&["up", "--detach"])
             .env("COMPOSE_DOCKER_CLI_BUILD", "1")
             .env("DOCKER_BUILDKIT", "1")
-            .current_dir(
-                app_state
-                    .config
-                    .benchmark_dir()?
-                    .join("server_builds/hapi_fhir_jpaserver"),
-            )
+            .current_dir(&server_work_dir)
             .output()
             .context("Failed to run 'docker-compose up'.")?;
         if !docker_up_output.status.success() {
@@ -59,12 +57,12 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
 
         // The server containers have now been started, though they're not necessarily ready yet.
         let server_plugin = app_state
-            .server_plugins
-            .iter()
-            .find(|p| p.server_name().0 == SERVER_NAME)
-            .expect("Unable to find server plugin")
-            .clone();
-        let server_handle = HapiJpaFhirServerHandle { server_plugin };
+            .find_server_plugin(SERVER_NAME)
+            .expect("Unable to find server plugin");
+        let server_handle = HapiJpaFhirServerHandle {
+            server_plugin,
+            server_work_dir,
+        };
 
         // Wait (up to a timeout) for the server to be ready.
         match wait_for_ready(app_state, &server_handle).await {
@@ -75,6 +73,13 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
             Ok(_) => Ok(Box::new(server_handle)),
         }
     }
+}
+
+/// Returns the work directory to use for the FHIR server.
+fn server_work_dir(benchmark_dir: &Path) -> PathBuf {
+    benchmark_dir
+        .join("server_builds")
+        .join("hapi_fhir_jpaserver")
 }
 
 /// Checks the specified server repeatedly to see if it is ready, up to a hardcoded timeout.
@@ -113,7 +118,7 @@ async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) 
 ///
 /// Parameters:
 /// * `app_state`: the application's [AppState]
-/// * `server_handle`: the server to test
+/// * `server_handle`: the [ServerHandle] for the server to test
 ///
 /// Returns an empty [Result], where an error indicates that the server was not ready.
 async fn probe_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
@@ -124,6 +129,7 @@ async fn probe_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle)
 /// Represents a launched instance of the HAPI FHIR JPA server.
 pub struct HapiJpaFhirServerHandle {
     server_plugin: Arc<dyn ServerPlugin>,
+    server_work_dir: PathBuf,
 }
 
 #[async_trait]
@@ -139,7 +145,7 @@ impl ServerHandle for HapiJpaFhirServerHandle {
     fn emit_logs_info(&self, logger: &slog::Logger) {
         let docker_logs_output = match Command::new("docker-compose")
             .args(&["logs", "--no-color"])
-            .current_dir("server_builds/hapi_fhir_jpaserver")
+            .current_dir(&self.server_work_dir)
             .output()
             .context("Failed to run 'docker-compose logs'.")
         {
@@ -195,7 +201,7 @@ impl ServerHandle for HapiJpaFhirServerHandle {
     fn shutdown(&self) -> Result<()> {
         let docker_down_output = Command::new("docker-compose")
             .args(&["down"])
-            .current_dir("server_builds/hapi_fhir_jpaserver")
+            .current_dir(&self.server_work_dir)
             .output()
             .context("Failed to run 'docker-compose down'.")?;
         if !docker_down_output.status.success() {
