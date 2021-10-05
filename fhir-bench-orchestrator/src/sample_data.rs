@@ -245,7 +245,7 @@ impl SampleData {
     /// Parameters:
     /// * `logger`: send log events here
     pub fn iter_orgs(&self, logger: &Logger) -> impl Iterator<Item = SampleResource> {
-        SampleResourceIter::new(logger, &self, "Organization".to_string())
+        SampleResourceIter::new(logger, self, "Organization".to_string())
     }
 }
 

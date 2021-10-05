@@ -37,7 +37,7 @@ impl ServerPlugin for SparkFhirServerPlugin {
     }
 
     async fn launch(&self, app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
-        launch_server(&app_state).await
+        launch_server(app_state).await
     }
 
     /// As detailed in this project's `doc/server-compliance.md` file, Spark non-compliantly rejects POSTs
@@ -205,7 +205,7 @@ impl ServerHandle for SparkFhirServerHandle {
 
     async fn expunge_all_content(&self, app_state: &AppState) -> Result<()> {
         self.shutdown()?;
-        launch_server(&app_state).await?;
+        launch_server(app_state).await?;
         Ok(())
     }
 
