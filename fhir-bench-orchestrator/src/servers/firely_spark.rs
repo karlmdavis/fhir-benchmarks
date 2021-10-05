@@ -10,11 +10,11 @@ use crate::{
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use slog::{info, warn};
+use std::path::{Path, PathBuf};
 use std::{process::Command, sync::Arc};
 use url::Url;
 
 static SERVER_NAME: &str = "Spark FHIR R4 Server";
-static SPARK_DIR: &str = "server_builds/firely_spark";
 
 /// The trait object for the `ServerPlugin` implementation for the Spark FHIR server.
 pub struct SparkFhirServerPlugin {
@@ -63,17 +63,15 @@ impl ServerPlugin for SparkFhirServerPlugin {
 /// Parameters:
 /// * `app_state`: the application's [AppState]
 async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
+    let server_work_dir = server_work_dir(&app_state.config.benchmark_dir()?);
+
     /*
      * (Re-)download the server's Docker Compose file from the project's GitHub. Note that this
      * always grabs and overwrites any pre-existing files with the latest.
      */
     let compose_url = "https://raw.githubusercontent.com/FirelyTeam/spark/r4/master/.docker/docker-compose.example.yml";
     let compose_response = reqwest::blocking::get(compose_url)?;
-    let compose_path = app_state
-        .config
-        .benchmark_dir()?
-        .join(SPARK_DIR)
-        .join("docker-compose.yml");
+    let compose_path = server_work_dir.join("docker-compose.yml");
     let mut compose_file = std::fs::File::create(compose_path)?;
     let compose_content = compose_response.text()?;
     std::io::copy(&mut compose_content.as_bytes(), &mut compose_file)?;
@@ -89,7 +87,7 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
         .args(&["up", "--detach"])
         .env("COMPOSE_DOCKER_CLI_BUILD", "1")
         .env("DOCKER_BUILDKIT", "1")
-        .current_dir(app_state.config.benchmark_dir()?.join(SPARK_DIR))
+        .current_dir(&server_work_dir)
         .output()
         .context("Failed to run 'docker-compose up'.")?;
     if !docker_up_output.status.success() {
@@ -103,12 +101,12 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
 
     // The server containers have now been started, though they're not necessarily ready yet.
     let server_plugin = app_state
-        .server_plugins
-        .iter()
-        .find(|p| p.server_name().0 == SERVER_NAME)
-        .expect("Unable to find server plugin")
-        .clone();
-    let server_handle = SparkFhirServerHandle { server_plugin };
+        .find_server_plugin(SERVER_NAME)
+        .expect("Unable to find server plugin");
+    let server_handle = SparkFhirServerHandle {
+        server_plugin,
+        server_work_dir,
+    };
 
     // Wait (up to a timeout) for the server to be ready.
     match wait_for_ready(app_state, &server_handle).await {
@@ -118,6 +116,11 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
         }
         Ok(_) => Ok(Box::new(server_handle)),
     }
+}
+
+/// Returns the work directory to use for the FHIR server.
+fn server_work_dir(benchmark_dir: &Path) -> PathBuf {
+    benchmark_dir.join("server_builds").join("firely_spark")
 }
 
 /// Checks the specified server repeatedly to see if it is ready, up to a hardcoded timeout.
@@ -156,7 +159,7 @@ async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) 
 ///
 /// Parameters:
 /// * `app_state`: the application's [AppState]
-/// * `server_handle`: the server to test
+/// * `server_handle`: the [ServerHandle] for the server to test
 ///
 /// Returns an empty [Result], where an error indicates that the server was not ready.
 async fn probe_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
@@ -167,6 +170,7 @@ async fn probe_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle)
 /// Represents a launched instance of the Spark FHIR server.
 pub struct SparkFhirServerHandle {
     server_plugin: Arc<dyn ServerPlugin>,
+    server_work_dir: PathBuf,
 }
 
 #[async_trait]
@@ -182,7 +186,7 @@ impl ServerHandle for SparkFhirServerHandle {
     fn emit_logs_info(&self, logger: &slog::Logger) {
         let docker_logs_output = match Command::new("docker-compose")
             .args(&["logs", "--no-color"])
-            .current_dir(SPARK_DIR)
+            .current_dir(&self.server_work_dir)
             .output()
             .context("Failed to run 'docker-compose logs'.")
         {
@@ -212,7 +216,7 @@ impl ServerHandle for SparkFhirServerHandle {
     fn shutdown(&self) -> Result<()> {
         let docker_down_output = Command::new("docker-compose")
             .args(&["down"])
-            .current_dir(SPARK_DIR)
+            .current_dir(&self.server_work_dir)
             .output()
             .context("Failed to run 'docker-compose down'.")?;
         if !docker_down_output.status.success() {
