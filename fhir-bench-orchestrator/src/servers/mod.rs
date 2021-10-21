@@ -44,8 +44,32 @@ pub trait ServerHandle: Sync {
     /// Return the [ServerPlugin] that this [ServerHandle] is an instance of.
     fn plugin(&self) -> Arc<dyn ServerPlugin>;
 
-    /// Return the base URL for the running FHIR server, e.g. `http://localhost:8080/foo/`.
+    /// Return the base URL for the running FHIR server, e.g. `http://localhost:8080/foo/`, which must have a
+    /// trailing `/`.
     fn base_url(&self) -> Url;
+
+    /// Returns a [reqwest::Client] that is properly configured for making HTTP(S)] requests to the server,
+    /// e.g. it's set to accept self-signed certificates, etc.
+    ///
+    /// Note: It is strongly suggested that [ServerHandle] implementations cache and re-use the same object
+    /// for every call to this method, as this will allow the use of HTTP connection pooling.
+    fn client(&self) -> Result<reqwest::Client>;
+
+    /// Creates a new [reqwest::RequestBuilder] that is properly configured for making HTTP(S)]
+    /// requests to the server, e.g. authentication headers are set, etc.
+    ///
+    /// Parameters:
+    /// * `client`: the [reqwest::Client] to use
+    /// * `method`: the [http::Method] to call
+    /// * `url`: the full/absolute [Url] to call
+    fn request_builder(
+        &self,
+        client: reqwest::Client,
+        method: http::Method,
+        url: Url,
+    ) -> reqwest::RequestBuilder {
+        request_builder_default(client, method, url)
+    }
 
     /// Write the full log content from the running FHIR server and its dependencies to the
     /// specified [slog::Logger] at the info level.
@@ -62,6 +86,38 @@ pub trait ServerHandle: Sync {
 
     /// TODO
     fn shutdown(&self) -> Result<()>;
+}
+
+/// Creates a new [reqwest::Client] that is properly configured for making HTTP(S)] requests to the server,
+/// e.g. it's set to accept self-signed certificates, etc.
+///
+/// Note: this is intended for use in [ServerHandle] implementations; other code should not use it directly,
+/// and should instead use [ServerHandle::request_builder()].
+pub fn client_default() -> Result<reqwest::Client> {
+    let client_builder = reqwest::ClientBuilder::new();
+
+    // Any server using HTTPS will be using a self-signed cert.
+    let client_builder = client_builder.danger_accept_invalid_certs(true);
+
+    Ok(client_builder.build()?)
+}
+
+/// Creates a new [reqwest::RequestBuilder] that is properly configured for making HTTP(S)]
+/// requests to the server, e.g. authentication headers are set, etc.
+///
+/// Note: this is intended for use in [ServerHandle] implementations; other code should not use it directly,
+/// and should instead use [ServerHandle::request_builder()].
+///
+/// Parameters:
+/// * `client`: the [reqwest::Client] to use
+/// * `method`: the [http::Method] to call
+/// * `url`: the full/absolute [Url] to call
+pub fn request_builder_default(
+    client: reqwest::Client,
+    method: http::Method,
+    url: Url,
+) -> reqwest::RequestBuilder {
+    client.request(method, url)
 }
 
 /// [ServerPlugin] implementations each represent a supported FHIR server implementation that can be started

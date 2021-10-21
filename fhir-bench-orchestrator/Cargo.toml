@@ -8,15 +8,14 @@ edition = "2018"
 [dependencies]
 
 # Allow async code.
-async-std = { version = "1", features = ["attributes"] }
+tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 futures = "0.3"
 
 # Used for making HTTP requests.
 url = "2"
-reqwest = { version = "0.11", features = ["blocking"] }
-async-h1 = "2"
-http-types = "2"
+http = "0.2"
+reqwest = "0.11"
 
 # Provide application logging facilities.
 log = "0.4"

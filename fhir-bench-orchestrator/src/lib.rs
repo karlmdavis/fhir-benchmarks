@@ -106,15 +106,16 @@ pub async fn run_bench_orchestrator() -> Result<()> {
                 })?;
             server_result.operations = Some(operations);
 
-            // Optionally pause for manual debugging.
-            // std::io::stdin().read_line(&mut String::new()).unwrap();
-
             // Shutdown and cleanup the server and its resources.
             info!(
                 app_state.logger,
                 "'{}': shutting down...",
                 server_plugin.server_name()
             );
+
+            // Optionally pause for manual debugging.
+            // std::io::stdin().read_line(&mut String::new()).unwrap();
+
             let shutdown_started = Utc::now();
             let shutdown_result = server_handle.shutdown();
             let shutdown_completed = Utc::now();

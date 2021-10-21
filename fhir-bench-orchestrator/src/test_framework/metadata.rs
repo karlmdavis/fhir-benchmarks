@@ -7,15 +7,13 @@ use super::{
 use crate::servers::ServerHandle;
 use crate::test_framework::{ServerOperationLog, ServerOperationMeasurement};
 use crate::AppState;
-use anyhow::{anyhow, Context, Result};
-use async_std::future::timeout;
-use async_std::net::TcpStream;
+use anyhow::{anyhow, Result};
 use chrono::prelude::*;
 use futures::prelude::*;
 use hdrhistogram::Histogram;
-use http_types::{Method, Request, Url};
 use slog::{info, trace, warn};
 use std::convert::TryFrom;
+use url::Url;
 
 static SERVER_OP_NAME_METADATA: &str = "metadata";
 
@@ -48,43 +46,49 @@ pub fn create_metadata_url(server_handle: &dyn ServerHandle) -> Url {
 ///
 /// Parameters:
 /// * `app_state`: the application's [AppState]
+/// * `server_handle`: the [ServerHandle] for the server to test
 /// * `operation_state`: the initial state machine for this operation iteration
-/// * `url`: the full [Url] to the endpoint to test
 ///
 /// Returns the final [ServerOperationIterationState] containing information about the operation's
 /// success or failure.
 async fn run_operation_metadata(
     app_state: &AppState,
+    server_handle: &dyn ServerHandle,
     operation_state: ServerOperationIterationState<ServerOperationIterationStarting>,
-    url: Url,
 ) -> std::result::Result<
     ServerOperationIterationState<ServerOperationIterationSucceeded>,
     ServerOperationIterationState<ServerOperationIterationFailed>,
 > {
+    let url = create_metadata_url(server_handle);
+
     trace!(app_state.logger, "GET '{}': starting...", url);
-    let stream = match TcpStream::connect(&*url.socket_addrs(|| None).unwrap()).await {
-        Ok(stream) => stream,
+
+    let client = match server_handle.client() {
+        Ok(client) => client,
         Err(err) => {
             return Err(operation_state
                 .completed()
-                .failed(anyhow!(format!("{}", err))));
+                .failed(anyhow!(format!("Unable to create client: '{}'", err))));
         }
     };
-    let request = Request::new(Method::Get, url.clone());
 
-    let response = async_h1::connect(stream.clone(), request).await;
+    let request_builder = server_handle.request_builder(client, http::Method::GET, url.clone());
+    let response = request_builder.send().await;
+
     let operation_state = operation_state.completed();
-    trace!(app_state.logger, "GET '{}': complete.", url);
+    trace!(app_state.logger, "GET '{}': complete.", &url.to_string());
 
     match response {
-        Ok(mut response) => {
+        Ok(response) => {
             let response_status = response.status();
-            if !response_status.is_success() {
-                let response_body = match response.body_string().await {
-                    Ok(response_body) => response_body,
-                    Err(err) => format!("Unable to retrieve response body due to error: '{}'", err),
-                };
 
+            // Always pull response body, to drain stream and release connection.
+            let response_body = match response.text().await {
+                Ok(response_body) => response_body,
+                Err(err) => format!("Unable to retrieve response body due to error: '{}'", err),
+            };
+
+            if !response_status.is_success() {
                 let error = anyhow!(
                     "The GET /metadata to '{}' failed, with status '{}' and body: '{}'",
                     &url,
@@ -98,35 +102,43 @@ async fn run_operation_metadata(
             // TODO more checks needed
             Ok(operation_state.succeeded())
         }
-        Err(err) => Err(operation_state.failed(anyhow!(format!("{}", err)))),
+        Err(err) => Err(operation_state.failed(anyhow!(format!("HTTP request failed: '{}'", err)))),
     }
 }
 
-/// Runs a single iteration of the `/metadata` operation and verifies its result, logging out any faults that
-/// were found (in addition to returning the error).
+/// Makes a `/metadata` request and verifies that it works as expected.
 ///
-/// Note: Unlike `run_operation_metadata(...)`, this method uses the `reqwest library and won't panic if the
-/// server isn't ready yet.
+/// Intended for use as an "is the server running?" probe.
 ///
 /// Parameters:
 /// * `app_state`: the application's [AppState]
-/// * `url`: the full [Url] to the endpoint to test
+/// * `server_handle`: the [ServerHandle] for the server to test
 ///
-/// Returns an empty [Result], indicating whether or not the operation succeeded or failed.
-pub async fn run_operation_metadata_safe(app_state: &AppState, url: Url) -> Result<()> {
-    let response = reqwest::blocking::get(url.clone())
-        .with_context(|| format!("request for '{}' failed", url))?;
+/// Returns [Result::Ok] if the operation worked as expected, or [Result::Err] if it didn't.
+pub async fn check_metadata_operation(
+    app_state: &AppState,
+    server_handle: &dyn ServerHandle,
+) -> Result<()> {
+    let operation_state = ServerOperationIterationState::new();
+    let operation = crate::test_framework::metadata::run_operation_metadata(
+        app_state,
+        server_handle,
+        operation_state.clone(),
+    );
+    let operation = tokio::time::timeout(
+        app_state
+            .config
+            .operation_timeout
+            .to_std()
+            .expect("unable to convert Duration"),
+        operation,
+    );
 
-    if !response.status().is_success() {
-        warn!(app_state.logger, "request failed"; "url" => url.as_str(), "status" => response.status().as_str());
-        return Err(anyhow!(
-            "request for '{}' failed with status '{}'",
-            url,
-            response.status()
-        ));
-    }
-    // TODO more checks needed
-    Ok(())
+    // Having the timeout gives us a wrapped Result<Result ...>>. Un-nest them.
+    let result = operation.await?;
+    result
+        .map(|_| ())
+        .map_err(|err| anyhow!("Metadata check failed: '{:?}'", err))
 }
 
 /// Verifies and benchmarks the FHIR `/metadata` operations for the specified number of concurrent users.
@@ -142,16 +154,14 @@ async fn benchmark_operation_metadata_for_users(
     server_handle: &dyn ServerHandle,
     concurrent_users: u32,
 ) -> ServerOperationMeasurement {
-    let url = create_metadata_url(server_handle);
-
     /*
      * Build an iterator: One element for each iteration to run, run the operation for each iteration, and
      * count the iterations that failed.
      */
     let operations = (0..app_state.config.iterations).map(|_| async {
         let operation_state = ServerOperationIterationState::new();
-        let operation = run_operation_metadata(app_state, operation_state.clone(), url.clone());
-        let operation = timeout(
+        let operation = run_operation_metadata(app_state, server_handle, operation_state.clone());
+        let operation = tokio::time::timeout(
             app_state
                 .config
                 .operation_timeout
