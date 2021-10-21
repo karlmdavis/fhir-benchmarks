@@ -70,10 +70,10 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
      * always grabs and overwrites any pre-existing files with the latest.
      */
     let compose_url = "https://raw.githubusercontent.com/FirelyTeam/spark/r4/master/.docker/docker-compose.example.yml";
-    let compose_response = reqwest::blocking::get(compose_url)?;
+    let compose_response = reqwest::get(compose_url).await?;
     let compose_path = server_work_dir.join("docker-compose.yml");
     let mut compose_file = std::fs::File::create(compose_path)?;
-    let compose_content = compose_response.text()?;
+    let compose_content = compose_response.text().await?;
     std::io::copy(&mut compose_content.as_bytes(), &mut compose_file)?;
 
     /*
@@ -103,9 +103,11 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
     let server_plugin = app_state
         .find_server_plugin(SERVER_NAME)
         .expect("Unable to find server plugin");
+    let http_client = super::client_default()?;
     let server_handle = SparkFhirServerHandle {
         server_plugin,
         server_work_dir,
+        http_client,
     };
 
     // Wait (up to a timeout) for the server to be ready.
@@ -131,16 +133,19 @@ fn server_work_dir(benchmark_dir: &Path) -> PathBuf {
 ///
 /// Returns an empty [Result], where an error indicates that the server was not ready.
 async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
-    async_std::future::timeout(std::time::Duration::from_secs(60), async {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
         let mut ready = false;
         let mut probe = None;
 
         while !ready {
-            probe = Some(probe_for_ready(app_state, server_handle).await);
+            probe = Some(
+                crate::test_framework::metadata::check_metadata_operation(app_state, server_handle)
+                    .await,
+            );
             ready = probe.as_ref().expect("probe result missing").is_ok();
 
             if !ready {
-                async_std::task::sleep(std::time::Duration::from_millis(500)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
         }
 
@@ -155,22 +160,11 @@ async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) 
     })?
 }
 
-/// Checks the specified server one time to see if it is ready.
-///
-/// Parameters:
-/// * `app_state`: the application's [AppState]
-/// * `server_handle`: the [ServerHandle] for the server to test
-///
-/// Returns an empty [Result], where an error indicates that the server was not ready.
-async fn probe_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
-    let probe_url = crate::test_framework::metadata::create_metadata_url(server_handle);
-    Ok(crate::test_framework::metadata::run_operation_metadata_safe(app_state, probe_url).await?)
-}
-
 /// Represents a launched instance of the Spark FHIR server.
 pub struct SparkFhirServerHandle {
     server_plugin: Arc<dyn ServerPlugin>,
     server_work_dir: PathBuf,
+    http_client: reqwest::Client,
 }
 
 #[async_trait]
@@ -181,6 +175,10 @@ impl ServerHandle for SparkFhirServerHandle {
 
     fn base_url(&self) -> url::Url {
         Url::parse("http://localhost:5555/fhir/").expect("Unable to parse URL.")
+    }
+
+    fn client(&self) -> Result<reqwest::Client> {
+        Ok(self.http_client.clone())
     }
 
     fn emit_logs_info(&self, logger: &slog::Logger) {

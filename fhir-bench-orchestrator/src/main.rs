@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     fhir_bench_orchestrator::run_bench_orchestrator().await
 }

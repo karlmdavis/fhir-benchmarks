@@ -7,20 +7,15 @@ use super::{
 };
 use crate::test_framework::{ServerOperationLog, ServerOperationMeasurement};
 use crate::AppState;
-use crate::{
-    sample_data::SampleResource,
-    servers::{ServerHandle, ServerPlugin},
-};
+use crate::{sample_data::SampleResource, servers::ServerHandle};
 use anyhow::anyhow;
-use async_std::future::timeout;
-use async_std::net::TcpStream;
 use chrono::prelude::*;
 use chrono::Duration;
 use futures::prelude::*;
 use hdrhistogram::Histogram;
-use http_types::{Method, Request, Url};
 use slog::{info, trace, warn};
-use std::{convert::TryFrom, sync::Arc};
+use std::convert::TryFrom;
+use url::Url;
 
 static SERVER_OP_NAME_POST_ORG: &str = "POST /Organization";
 
@@ -203,22 +198,15 @@ async fn benchmark_post_org_for_users_and_data(
         ServerOperationIterationState<ServerOperationIterationFailed>,
     >,
 > {
-    let url = create_org_url(server_handle);
-
     /*
      * Build an iterator: One element for each iteration to run, run the operation for each iteration, and
      * count the iterations that failed.
      */
     let operations = sample_data.into_iter().map(|org| async {
         let operation_state = ServerOperationIterationState::new();
-        let operation = run_operation_post_org(
-            app_state,
-            server_handle.plugin(),
-            operation_state.clone(),
-            url.clone(),
-            org,
-        );
-        let operation = timeout(
+        let operation =
+            run_operation_post_org(app_state, server_handle, operation_state.clone(), org);
+        let operation = tokio::time::timeout(
             app_state
                 .config
                 .operation_timeout
@@ -271,22 +259,23 @@ fn create_org_url(server_handle: &dyn ServerHandle) -> Url {
 ///
 /// Parameters:
 /// * `app_state`: the application's [AppState]
+/// * `server_handle`: the [ServerHandle] for the server implementation instance being tested
 /// * `operation_state`: the initial state machine for this operation iteration
-/// * `url`: the full [Url] to the endpoint to test
 /// * `org`: the sample `Organization` resource to test with
 ///
 /// Returns the final [ServerOperationIterationState] containing information about the operation's
 /// success or failure.
 async fn run_operation_post_org(
     app_state: &AppState,
-    server_plugin: Arc<dyn ServerPlugin>,
+    server_handle: &dyn ServerHandle,
     operation_state: ServerOperationIterationState<ServerOperationIterationStarting>,
-    url: Url,
     org: SampleResource,
 ) -> std::result::Result<
     ServerOperationIterationState<ServerOperationIterationSucceeded>,
     ServerOperationIterationState<ServerOperationIterationFailed>,
 > {
+    let url = create_org_url(server_handle);
+
     /*
      * TODO Per the FHIR spec, POST "SHALL" ignore IDs in resources,
      * so any later GETs using the ID in the JSON source would fail.
@@ -296,7 +285,7 @@ async fn run_operation_post_org(
      * Also: Spark noncompliantly throws an error due to the ID being in the
      * resource, so I need to strip that out here, too.
      */
-    let org = server_plugin.fudge_sample_resource(org);
+    let org = server_handle.plugin().fudge_sample_resource(org);
 
     let org_metadata = &org.metadata.clone();
     let org_string = match serde_json::to_string(&org.resource_json) {
@@ -309,27 +298,29 @@ async fn run_operation_post_org(
     };
 
     trace!(app_state.logger, "POST '{}': starting...", url);
-    let stream = match TcpStream::connect(&*url.socket_addrs(|| None).unwrap()).await {
-        Ok(stream) => stream,
+    let client = match server_handle.client() {
+        Ok(client) => client,
         Err(err) => {
             return Err(operation_state
                 .completed()
                 .failed(anyhow!(format!("{}", err))));
         }
     };
-    let mut request = Request::new(Method::Post, url.clone());
-    request.insert_header("Content-Type", "application/fhir+json");
-    request.set_body(org_string);
 
-    let response = async_h1::connect(stream.clone(), request).await;
+    let request_builder = server_handle
+        .request_builder(client, http::Method::POST, url.clone())
+        .header("Content-Type", "application/fhir+json")
+        .body(org_string);
+    let response = request_builder.send().await;
+
     let operation_state = operation_state.completed();
     trace!(app_state.logger, "POST '{}': complete.", url);
 
     match response {
-        Ok(mut response) => {
+        Ok(response) => {
             let response_status = response.status();
             if !response_status.is_success() {
-                let response_body = match response.body_string().await {
+                let response_body = match response.text().await {
                     Ok(response_body) => response_body,
                     Err(err) => format!("Unable to retrieve response body due to error: '{}'", err),
                 };
