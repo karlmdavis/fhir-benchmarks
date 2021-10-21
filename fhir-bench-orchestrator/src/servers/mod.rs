@@ -10,6 +10,7 @@ use url::Url;
 
 mod firely_spark;
 mod hapi_jpa;
+mod ibm_fhir;
 
 /// Represents the unique name of a FHIR server implementation.
 ///
@@ -181,5 +182,6 @@ pub fn create_server_plugins() -> Result<Vec<Arc<dyn ServerPlugin>>> {
     Ok(vec![
         Arc::new(hapi_jpa::HapiJpaFhirServerPlugin::new()),
         Arc::new(firely_spark::SparkFhirServerPlugin::new()),
+        Arc::new(ibm_fhir::IbmFhirServerPlugin::new()),
     ])
 }

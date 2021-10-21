@@ -1,0 +1,49 @@
+##
+# Can be used to run the IBM FHIR server, paired with a PostgreSQL server as it backend database. This file
+# is not intended for use by itself; see the [README.md](./README.md) for details.
+##
+
+version: "3"
+services:
+  ibm-fhir:
+    container_name: ibm-fhir
+    image: ibmcom/ibm-fhir-server:4.9.2
+    volumes:
+      - type: bind
+        source: ./volumes/config
+        target: /opt/ol/wlp/usr/servers/defaultServer/config
+        read_only: true
+      - type: bind
+        source: ./volumes/overrides
+        target: /opt/ol/wlp/usr/servers/defaultServer/configDropins/overrides
+        read_only: true
+    command: bash -c "
+        java -jar /opt/ibm-fhir-server/tools/fhir-persistence-schema-*-cli.jar
+          --db-type postgresql
+          --prop db.host=postgresql
+          --prop db.port=5432
+          --prop db.database=fhirdb
+          --prop user=fhirserver
+          --prop password=change-password
+          --create-schemas
+        &&
+        /opt/ol/wlp/bin/server run"
+    # command: /opt/ol/wlp/bin/server run
+    ports:
+      - "9443:9443"
+    restart: always
+    depends_on:
+      - postgresql
+    links:
+      # The IBM FHIR PostgreSQL config uses 'postgres_postgres_1' as the host name.
+      - postgresql:postgres_postgres_1
+  postgresql:
+    container_name: ibm-fhir-postgresql
+    image: postgres:13.3
+    # Note: We're using the default DB name, user, and password from the configDropins/disabled/datasource-postgresql.xml file.
+    environment:
+      POSTGRES_DB: fhirdb
+      POSTGRES_USER: fhirserver
+      POSTGRES_PASSWORD: 'change-password'
+    ports:
+      - "5432:5432"

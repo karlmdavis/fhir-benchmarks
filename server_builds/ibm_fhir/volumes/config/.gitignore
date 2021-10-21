@@ -1,0 +1,2 @@
+# Don't commit the content we extract from the IBM FHIR Docker image.
+default/
