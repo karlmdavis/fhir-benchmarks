@@ -9,7 +9,6 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use slog::{info, warn};
 use std::path::{Path, PathBuf};
 use std::{process::Command, sync::Arc};
 use url::Url;
@@ -113,7 +112,7 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
     // Wait (up to a timeout) for the server to be ready.
     match wait_for_ready(app_state, &server_handle).await {
         Err(err) => {
-            server_handle.emit_logs_info(&app_state.logger);
+            server_handle.emit_logs_info(&app_state.logger)?;
             Err(err)
         }
         Ok(_) => Ok(Box::new(server_handle)),
@@ -181,28 +180,16 @@ impl ServerHandle for SparkFhirServerHandle {
         Ok(self.http_client.clone())
     }
 
-    fn emit_logs_info(&self, logger: &slog::Logger) {
-        let docker_logs_output = match Command::new("docker-compose")
+    fn emit_logs(&self) -> Result<String> {
+        match Command::new("docker-compose")
             .args(&["logs", "--no-color"])
             .current_dir(&self.server_work_dir)
             .output()
             .context("Failed to run 'docker-compose logs'.")
         {
-            Ok(output) => output,
-            Err(err) => {
-                warn!(
-                    logger,
-                    "Unable to retrieve docker-compose logs for '{}' server: {}", SERVER_NAME, err
-                );
-                return;
-            }
-        };
-        info!(
-            logger,
-            "Full docker-compose logs for '{}' server:\n{}",
-            SERVER_NAME,
-            String::from_utf8_lossy(&docker_logs_output.stdout)
-        );
+            Ok(output) => Ok(String::from_utf8_lossy(&output.stdout).to_string()),
+            Err(err) => Err(err),
+        }
     }
 
     async fn expunge_all_content(&self, app_state: &AppState) -> Result<()> {

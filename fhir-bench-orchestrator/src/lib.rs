@@ -202,3 +202,66 @@ fn output_results(framework_results: &FrameworkResults) {
     let framework_results_pretty = serde_json::to_string_pretty(&framework_results).unwrap();
     println!("{}", framework_results_pretty);
 }
+
+/// Provides utility code for use in tests.
+#[cfg(test)]
+mod tests_util {
+    use std::{fs::OpenOptions, path::Path, sync::Arc};
+
+    use crate::{
+        sample_data,
+        servers::{self, ServerPlugin},
+        AppConfig, AppState,
+    };
+    use anyhow::{Context, Result};
+    use slog::{o, Drain};
+
+    /// Builds an [AppState] for tests to use.
+    ///
+    /// Parameters:
+    /// * `log_target`: the [Path] to write log output to
+    pub fn create_app_state_test<P>(log_target: P) -> Result<AppState>
+    where
+        P: AsRef<Path>,
+    {
+        // Create the root slog logger.
+        let logger = create_logger_root_test(log_target);
+
+        // Parse command line args.
+        let config = AppConfig::new()?;
+
+        // Find all FHIR server implementations that can be tested.
+        let server_plugins: Vec<Arc<dyn ServerPlugin>> = servers::create_server_plugins()?;
+
+        // Setup all global/shared resources.
+        let sample_data = sample_data::generate_data_using_config(&logger, &config)
+            .context("Error when generating sample data.")?;
+
+        Ok(AppState {
+            logger,
+            config,
+            server_plugins,
+            sample_data,
+        })
+    }
+
+    /// Builds the root [slog::Logger] for the application to use, configured to output to the specified stream.
+    ///
+    /// Parameters:
+    /// * `log_target`: the [Path] to write log output to
+    fn create_logger_root_test<P>(log_target: P) -> slog::Logger
+    where
+        P: AsRef<Path>,
+    {
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(log_target)
+            .unwrap();
+        let drain = slog_json::Json::default(file).fuse();
+        let drain = slog_async::Async::new(drain).build().fuse();
+
+        slog::Logger::root(drain, o!())
+    }
+}

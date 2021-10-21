@@ -4,6 +4,7 @@ use crate::{sample_data::SampleResource, AppState};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use slog::{self, info};
 use std::sync::Arc;
 use url::Url;
 
@@ -71,12 +72,21 @@ pub trait ServerHandle: Sync {
         request_builder_default(client, method, url)
     }
 
+    /// Returns the full log content from the running FHIR server and its dependencies.
+    fn emit_logs(&self) -> Result<String>;
+
     /// Write the full log content from the running FHIR server and its dependencies to the
     /// specified [slog::Logger] at the info level.
-    ///
-    /// Note: This method should not panic. If unable to retrieve the logs, a warning about that
-    /// failure should be logged, instead.
-    fn emit_logs_info(&self, logger: &slog::Logger);
+    fn emit_logs_info(&self, logger: &slog::Logger) -> Result<()> {
+        info!(
+            logger,
+            "Full docker-compose logs for '{}' server:\n{}",
+            self.plugin().server_name(),
+            self.emit_logs()?
+        );
+
+        Ok(())
+    }
 
     /// Clear all content from the server, as if had just been launched with an empty database.
     ///
