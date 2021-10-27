@@ -218,6 +218,10 @@ mod tests_util {
 
     /// Builds an [AppState] for tests to use.
     ///
+    /// Please note that this is not safe for concurrent use, as the sample data is generated in a shared
+    /// directory, which can cause race conditions. Any tests using this should have a
+    /// `#[serial_test::serial(sample_data)]` attribute added to them to avoid spurious failures.
+    ///
     /// Parameters:
     /// * `log_target`: the [Path] to write log output to
     pub fn create_app_state_test<P>(log_target: P) -> Result<AppState>

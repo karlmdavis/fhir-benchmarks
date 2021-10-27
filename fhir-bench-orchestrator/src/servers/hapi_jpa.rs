@@ -203,3 +203,54 @@ impl ServerHandle for HapiJpaFhirServerHandle {
         Ok(())
     }
 }
+
+/// Unit tests for the [crate::servers::hapi_jpa] module.
+///
+/// Note: These aren't exactly typical "unit" tests, as they will launch and shutdown the server via Docker,
+/// which is a not-cheap operation.
+#[cfg(test)]
+mod tests {
+    use std::{ffi::OsStr, path::Path};
+
+    use anyhow::{anyhow, Result};
+
+    #[tokio::test]
+    #[serial_test::serial(sample_data)]
+    async fn verify_server_launch() -> Result<()> {
+        let log_target = std::env::temp_dir().join(format!(
+            "{}_verify_server_launch.log",
+            Path::new(file!())
+                .file_name()
+                .unwrap_or(OsStr::new("server"))
+                .to_string_lossy()
+        ));
+
+        let app_state = crate::tests_util::create_app_state_test(&log_target.clone())
+            .expect("Unable to create test app state.");
+        let server_plugin = app_state
+            .find_server_plugin(super::SERVER_NAME)
+            .expect("Unable to find server plugin");
+
+        // This will launch the server and verify it's ready.
+        // Note: we can't use the assert_* macros here, as panics would leave a dangling container.
+        let launch_result = match server_plugin.launch(&app_state).await {
+            Ok(server_handle) => server_handle.shutdown().map(|_| ()),
+            Err(err) => Err(err),
+        };
+
+        // Clean up the log if things went well, otherwise return an error with the path to it.
+        match launch_result {
+            Ok(_) => {
+                if log_target.exists() {
+                    std::fs::remove_file(log_target)?;
+                }
+                Ok(())
+            }
+            Err(err) => Err(anyhow!(
+                "Server launch test failed due to error: {:?}. Log output: {:?}",
+                err,
+                log_target
+            )),
+        }
+    }
+}
