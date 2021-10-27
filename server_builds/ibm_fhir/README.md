@@ -6,13 +6,14 @@ It is written in Java and supports a number of backend databases:
   Derby, PostgreSQL, and DB2.
 Here, we run it with PostgreSQL.
 
-To start the server, use the provided shell script:
+To start the server, use the provided shell script as if it were `docker-compose`:
 
-    $ ./ibm_fhir_launch.sh
+    $ ./docker_compose_ibm_fhir.sh up --detach
 
 To stop the server, Docker Compose can be used as normal:
 
-    $ docker-compose --down
+    $ ./docker_compose_ibm_fhir down
 
-The whole setup here is a bit convoluted, but the inspiration for it comes from the IBM FHIR repo itself:
-<https://github.com/IBM/FHIR/blob/main/build/docker/docker-compose.yml>.
+The setup here is a bit convoluted,
+  but we're downloading and running the `demo/` provided by the IBM FHIR repo itself:
+<https://github.com/IBM/FHIR/blob/main/demo>.
