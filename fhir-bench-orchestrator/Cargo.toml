@@ -66,6 +66,9 @@ assert_cmd = "1"
 # Used in tests, to generate random temp dirs.
 tempfile = "3"
 
+# Used in tests, to ensure that the shared resources are properly managed.
+serial_test = "0.5"
+
 
 [build-dependencies]
 
