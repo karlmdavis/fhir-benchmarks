@@ -1,0 +1,3 @@
+# Ignore the downloaded IBM FHIR code.
+*.tar.gz
+FHIR-*/

@@ -50,7 +50,8 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
      * Note: The environment variables used here are required to get build caching working correctly,
      * particularly for CI machines where the cache would otherwise be cold.
      */
-    let docker_up_output = Command::new("./ibm_fhir_launch.sh")
+    let docker_up_output = Command::new("./docker_compose_ibm_fhir.sh")
+        .args(&["up", "--detach"])
         .current_dir(&server_work_dir)
         .output()
         .context("Failed to run 'ibm_fhir_launch.sh'.")?;
@@ -155,7 +156,7 @@ impl ServerHandle for IbmFhirServerHandle {
     }
 
     fn emit_logs(&self) -> Result<String> {
-        match Command::new("docker-compose")
+        match Command::new("./docker_compose_ibm_fhir.sh")
             .args(&["logs", "--no-color"])
             .current_dir(&self.server_work_dir)
             .output()
@@ -173,7 +174,7 @@ impl ServerHandle for IbmFhirServerHandle {
     }
 
     fn shutdown(&self) -> Result<()> {
-        let docker_down_output = Command::new("docker-compose")
+        let docker_down_output = Command::new("./docker_compose_ibm_fhir.sh")
             .args(&["down"])
             .current_dir(&self.server_work_dir)
             .output()
