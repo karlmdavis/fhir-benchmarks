@@ -5,6 +5,12 @@ As a reader/consumer of benchmarks,
   so that I can trust that the benchmarks are representative of real world performance.
 
 
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
+
 ## Details
 
 I'm planning to use Synthea, so that covers most of the concerns, I think.

@@ -6,6 +6,12 @@ As a benchmark contributor,
   so that I have a better idea which operations I might want to add support for next.
 
 
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
+
 ## Details
 
 * This will help to determine which resource's operations

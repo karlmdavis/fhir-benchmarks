@@ -5,6 +5,12 @@ As a benchmark contributor,
   so that I can reliably reproduce their results.
 
 
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
+
 ## Details
 
 * Until we support SaaS/cloud-service FHIR server implementations,

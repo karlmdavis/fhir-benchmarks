@@ -63,6 +63,13 @@ These failures look like this in the log:
 
 These errors _seem_ to clear up once HAPI has been running for a little bit.
 
+
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
+
 ## Status
 
 This issue appears to be resolved by <https://github.com/karlmdavis/fhir-benchmarks/pull/8>.

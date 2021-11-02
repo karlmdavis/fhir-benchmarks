@@ -13,3 +13,9 @@ As a developer of FHIR servers,
 As a potential contributor to this project,
   I need a project README that explains why this benchmarking effort is important and how to contribute to it,
   so that I can easily get started contributing.
+
+
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).

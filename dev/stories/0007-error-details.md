@@ -4,6 +4,13 @@ As a developer of this application,
   I need errors that occur in the application to provide more detail,
   so that I can track them down and solve them.
 
+
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
+
 ## Details
 
 Right now, the application's output on WSL and in GitHub Actions looks like this:

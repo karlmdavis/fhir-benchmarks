@@ -5,6 +5,12 @@ As a user of the benchmark application,
   so that I'm better able to diagnose issues when they're encountered.
 
 
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
+
 # Details
 
 * I'll be honest: I don't have a real good use case or burning need for this right now
