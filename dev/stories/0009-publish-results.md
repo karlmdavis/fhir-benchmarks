@@ -11,3 +11,9 @@ As a benchmark consumer,
     similar to how [TechEmpower's Web Framework Benchmarks](https://www.techempower.com/benchmarks/)
     are published.
 * I would prefer that the site be static, as that's just easier to host, manage, etc.
+
+
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).

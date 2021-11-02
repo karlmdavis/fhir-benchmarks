@@ -5,6 +5,12 @@ As a benchmark consumer,
   so that I can see how reads, searches, etc. perform.
 
 
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
+
 ## Details
 
 * The `Organization` resource isn't particularly compelling,

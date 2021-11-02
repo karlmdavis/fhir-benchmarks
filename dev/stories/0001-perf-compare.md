@@ -4,6 +4,11 @@ As a FHIR server implementor, I need an apples-to-apples comparison of performan
   so that I can understand how the performance of my FHIR server differs from others -- and in particular,
   where it stands in a ranked comparison.
 
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
 ## Details
 
 * The "apples-to-apples" qualifier is key. Comparisons are only possible when:

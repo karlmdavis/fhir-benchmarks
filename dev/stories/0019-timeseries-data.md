@@ -9,6 +9,12 @@ As a benchmark contributor and/or FHIR server implementer,
   over time during each benchmark operation.
 
 
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
+
 ## Details
 
 * This is something Wind Tunnel provides.

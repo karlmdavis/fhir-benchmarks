@@ -14,6 +14,13 @@ Instead, I think we need to start collecting logs for the FHIR servers,
   writing those logs to disk,
   and then referencing all of the log file locations in the JSON output.
 
+
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
+
 ## Details
 
 * For larger benchmark runs, these log files are liable to eat a lot of disk space,

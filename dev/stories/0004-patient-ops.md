@@ -5,6 +5,13 @@ As a benchmark user,
   so that I can gain insight into various FHIR server's performance
   with this important resource.
 
+
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
+
+
 ## Details
 
 I was originally thinking this would be a good resource to benchmark next

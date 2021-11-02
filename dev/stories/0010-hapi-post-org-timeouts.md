@@ -8,5 +8,12 @@ Getting a lot of operation failures with the benchmarks logging this:
   "level": "WARN",
   "ts": "2021-05-31T18:23:45.09314212000:00"
 }
+```
 
 These consistently pop up with more concurrency, e.g. when running on `eddings` about a quarter of requests at `concurrent_users: 10` are failing due to this.
+
+
+## Planning
+
+This user story is included in the
+  [Round 1 Release Plan](../plans/0001-round-1.md).
