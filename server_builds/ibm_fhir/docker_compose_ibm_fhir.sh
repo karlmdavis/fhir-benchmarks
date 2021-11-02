@@ -4,6 +4,10 @@ set -e
 set -o pipefail
 
 # Specify the version of the IBM FHIR server to use.
+#
+# Note: right now, the IBM FHIR `demo/docker-compose.yml` file always points to the `latest` Docker image,
+# so this version will have to be manually kept upto date, lest the Docker container and the Docker Compose
+# configuration for it diverge in incompatible ways.
 version="4.9.2"
 
 # Grab the directory that this script lives in.
