@@ -4,19 +4,18 @@ use crate::config::AppConfig;
 use crate::servers::{ServerHandle, ServerName, ServerPlugin};
 use crate::util::{serde_duration_iso8601, serde_histogram};
 use crate::AppState;
-use anyhow::Result;
 use chrono::prelude::*;
 use chrono::Duration;
+use eyre::Result;
 use hdrhistogram::Histogram;
 use serde::{Deserialize, Serialize};
-use slog_derive::SerdeValue;
 use std::sync::Arc;
 
 pub mod metadata;
 mod post_org;
 
 /// Stores the complete set of results from a run of the framework.
-#[derive(Clone, Deserialize, SerdeValue, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct FrameworkResults {
     /// When the benchmark framework run started, in wall clock time.
     pub started: DateTime<Utc>,
@@ -61,7 +60,7 @@ impl FrameworkResults {
 }
 
 /// Stores details on the system used to run the benchmarks.
-#[derive(Deserialize, SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, Clone, Serialize)]
 pub struct FrameworkMetadata {
     /// Whether or not the framework was compiled in debug or release mode.
     pub cargo_profile: String,
@@ -105,7 +104,7 @@ impl Default for FrameworkMetadata {
 }
 
 /// Stores the set of test results from a single server implementation.
-#[derive(Deserialize, SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, Clone, Serialize)]
 pub struct ServerResult {
     /// The name of the FHIR server that this [ServerResult] is for.
     pub server: ServerName,
@@ -134,7 +133,7 @@ impl ServerResult {
 }
 
 /// Records the outcomes of a framework operation.
-#[derive(Debug, Deserialize, SerdeValue, Clone, Serialize)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct FrameworkOperationLog {
     /// When the operation was started, in wall clock time.
     pub started: DateTime<Utc>,
@@ -158,7 +157,7 @@ impl FrameworkOperationLog {
 }
 
 /// Eunmerates the success vs. failure outcomes of a framework operation.
-#[derive(Debug, Deserialize, SerdeValue, Clone, Serialize)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub enum FrameworkOperationResult {
     /// Indicates that, as best as can be told, the framwork operation succeeded.
     Ok(),
@@ -180,7 +179,7 @@ impl FrameworkOperationResult {
 
 /// Models the results of trying to benchmark a specific server implementation for the specified
 /// [ServerOperationName].
-#[derive(Deserialize, SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, Clone, Serialize)]
 pub struct ServerOperationLog {
     /// The name of the operation that was benchmarked.
     pub operation: ServerOperationName,
@@ -206,7 +205,7 @@ impl ServerOperationLog {
 }
 
 /// Models the measurement attempts made for a [ServerOperationLog] at a particular level of concurrency.
-#[derive(Deserialize, SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, Clone, Serialize)]
 pub struct ServerOperationMeasurement {
     /// The number of concurrent users' worth of load that the benchmark attempted to generate.
     pub concurrent_users: u32,
@@ -242,7 +241,7 @@ pub struct ServerOperationMeasurement {
 /// static SERVER_OP_NAME: &str = "Very Awesome Server";
 /// let server_op_name: ServerOperationName = SERVER_OP_NAME.into();
 /// ```
-#[derive(Deserialize, SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, Clone, Serialize)]
 pub struct ServerOperationName(pub String);
 
 impl From<&str> for ServerOperationName {
@@ -258,7 +257,7 @@ impl std::fmt::Display for ServerOperationName {
 }
 
 /// Details the performance of a single server operation, across all iterations (including any failures).
-#[derive(Deserialize, SerdeValue, Clone, Serialize)]
+#[derive(Deserialize, Clone, Serialize)]
 pub struct ServerOperationMetrics {
     pub throughput_per_second: f64,
     pub latency_millis_mean: f64,
@@ -344,7 +343,7 @@ struct ServerOperationIterationFailed {
     completed: ServerOperationIterationCompleted,
 
     /// The [anyhow::Error] detailing how/why the operation iteraion failed.
-    error: anyhow::Error,
+    error: eyre::Error,
 }
 
 impl ServerOperationIterationState<ServerOperationIterationStarting> {
@@ -388,7 +387,7 @@ impl ServerOperationIterationState<ServerOperationIterationCompleted> {
     /// * `error`: the [anyhow::Error] detailing how/why the operation iteraion failed
     pub fn failed(
         self,
-        error: anyhow::Error,
+        error: eyre::Error,
     ) -> ServerOperationIterationState<ServerOperationIterationFailed> {
         ServerOperationIterationState {
             _inner: ServerOperationIterationFailed {
@@ -438,9 +437,9 @@ mod tests {
     };
     use crate::util::serde_duration_iso8601;
     use crate::{config::AppConfig, test_framework::FrameworkMetadata};
-    use anyhow::Result;
     use chrono::prelude::*;
     use chrono::Duration;
+    use eyre::Result;
     use hdrhistogram::Histogram;
     use serde_json::json;
 

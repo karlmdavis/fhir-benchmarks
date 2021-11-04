@@ -8,13 +8,13 @@ use super::{
 use crate::test_framework::{ServerOperationLog, ServerOperationMeasurement};
 use crate::AppState;
 use crate::{sample_data::SampleResource, servers::ServerHandle};
-use anyhow::anyhow;
 use chrono::prelude::*;
 use chrono::Duration;
+use eyre::eyre;
 use futures::prelude::*;
 use hdrhistogram::Histogram;
-use slog::{info, trace, warn};
 use std::convert::TryFrom;
+use tracing::{info, trace, warn};
 use url::Url;
 
 static SERVER_OP_NAME_POST_ORG: &str = "POST /Organization";
@@ -31,10 +31,7 @@ pub async fn benchmark_post_org(
     app_state: &AppState,
     server_handle: &dyn ServerHandle,
 ) -> ServerOperationLog {
-    trace!(
-        app_state.logger,
-        "Benchmarking POST /Organization: starting..."
-    );
+    trace!("Benchmarking POST /Organization: starting...");
     let mut server_op_log = ServerOperationLog::new(SERVER_OP_NAME_POST_ORG.into());
 
     for concurrent_users in app_state.config.concurrency_levels.clone() {
@@ -43,10 +40,7 @@ pub async fn benchmark_post_org(
         server_op_log.measurements.push(measurement);
     }
 
-    trace!(
-        app_state.logger,
-        "Benchmarking POST /Organization: completed."
-    );
+    trace!("Benchmarking POST /Organization: completed.");
     server_op_log
 }
 
@@ -66,8 +60,8 @@ async fn benchmark_post_org_for_users(
     // Setup the results tracking state.
     let mut histogram = Histogram::<u64>::new(3).expect("Unable to construct histogram.");
     info!(
-        app_state.logger,
-        "Benchmarking POST /Organization: '{}' concurrent users: starting...", concurrent_users
+        "Benchmarking POST /Organization: '{}' concurrent users: starting...",
+        concurrent_users
     );
     let started = Utc::now();
     let mut execution_duration: Duration = Duration::seconds(0);
@@ -76,8 +70,7 @@ async fn benchmark_post_org_for_users(
 
     /* The iterations need to be split across groups, based on the resources (i.e. sample data) that each
      * iteration will consume. */
-    let sample_orgs_count: u32 =
-        u32::try_from(app_state.sample_data.iter_orgs(&app_state.logger).count()).unwrap();
+    let sample_orgs_count: u32 = u32::try_from(app_state.sample_data.iter_orgs().count()).unwrap();
     assert!(sample_orgs_count > 0, "No sample orgs found.");
     let groups = (app_state.config.iterations - 1) / sample_orgs_count + 1;
     for group_index in 0..groups {
@@ -89,7 +82,7 @@ async fn benchmark_post_org_for_users(
         match server_handle.expunge_all_content(app_state).await {
             Ok(_) => {}
             Err(err) => {
-                warn!(app_state.logger, "FHIR server expunge: error: {}", err);
+                warn!("FHIR server expunge: error: {}", err);
                 let completed = Utc::now();
                 let iterations_succeeded = app_state.config.iterations - iterations_failed;
                 let execution_duration = completed - started;
@@ -112,10 +105,9 @@ async fn benchmark_post_org_for_users(
         // Load the sample data that each iteration will consume an element of.
         let sample_data = app_state
             .sample_data
-            .iter_orgs(&app_state.logger)
+            .iter_orgs()
             .take(usize::try_from(group_iterations).unwrap());
         info!(
-            app_state.logger,
             "Benchmarking POST /Organization: '{}' concurrent users: group '{}/{}' with '{}' iterations: starting...",
             concurrent_users, group_index + 1, groups, group_iterations
         );
@@ -132,7 +124,6 @@ async fn benchmark_post_org_for_users(
 
         let group_completed = Utc::now();
         info!(
-            app_state.logger,
             "Benchmarking POST /Organization: '{}' concurrent users: group '{}/{}' with '{}' iterations: completed.",
             concurrent_users, group_index + 1, groups, group_iterations
         );
@@ -146,10 +137,7 @@ async fn benchmark_post_org_for_users(
                         .expect("Histogram recording failed.");
                 }
                 Err(err) => {
-                    warn!(
-                        app_state.logger,
-                        "Operation '{}' failed: '{:?}", SERVER_OP_NAME_POST_ORG, err
-                    );
+                    warn!("Operation '{}' failed: '{:?}", SERVER_OP_NAME_POST_ORG, err);
                     iterations_failed += 1;
                 }
             }
@@ -160,8 +148,8 @@ async fn benchmark_post_org_for_users(
 
     let completed = Utc::now();
     info!(
-        app_state.logger,
-        "Benchmarking POST /Organization: '{}' concurrent users: completed.", concurrent_users
+        "Benchmarking POST /Organization: '{}' concurrent users: completed.",
+        concurrent_users
     );
 
     let iterations_succeeded = app_state.config.iterations - iterations_failed;
@@ -204,8 +192,7 @@ async fn benchmark_post_org_for_users_and_data(
      */
     let operations = sample_data.into_iter().map(|org| async {
         let operation_state = ServerOperationIterationState::new();
-        let operation =
-            run_operation_post_org(app_state, server_handle, operation_state.clone(), org);
+        let operation = run_operation_post_org(server_handle, operation_state.clone(), org);
         let operation = tokio::time::timeout(
             app_state
                 .config
@@ -220,7 +207,7 @@ async fn benchmark_post_org_for_users_and_data(
         let result = result.map_err(|err| {
             operation_state
                 .completed()
-                .failed(anyhow!("Operation timed out: '{}'", err))
+                .failed(eyre!("Operation timed out: '{}'", err))
         });
         result.and_then(|wrapped_result| wrapped_result)
     });
@@ -258,7 +245,6 @@ fn create_org_url(server_handle: &dyn ServerHandle) -> Url {
 /// faults that were found.
 ///
 /// Parameters:
-/// * `app_state`: the application's [AppState]
 /// * `server_handle`: the [ServerHandle] for the server implementation instance being tested
 /// * `operation_state`: the initial state machine for this operation iteration
 /// * `org`: the sample `Organization` resource to test with
@@ -266,7 +252,6 @@ fn create_org_url(server_handle: &dyn ServerHandle) -> Url {
 /// Returns the final [ServerOperationIterationState] containing information about the operation's
 /// success or failure.
 async fn run_operation_post_org(
-    app_state: &AppState,
     server_handle: &dyn ServerHandle,
     operation_state: ServerOperationIterationState<ServerOperationIterationStarting>,
     org: SampleResource,
@@ -293,17 +278,17 @@ async fn run_operation_post_org(
         Err(err) => {
             return Err(operation_state
                 .completed()
-                .failed(anyhow!(format!("{}", err))));
+                .failed(eyre!(format!("{}", err))));
         }
     };
 
-    trace!(app_state.logger, "POST '{}': starting...", url);
+    trace!("POST '{}': starting...", url);
     let client = match server_handle.client() {
         Ok(client) => client,
         Err(err) => {
             return Err(operation_state
                 .completed()
-                .failed(anyhow!(format!("{}", err))));
+                .failed(eyre!(format!("{}", err))));
         }
     };
 
@@ -314,7 +299,7 @@ async fn run_operation_post_org(
     let response = request_builder.send().await;
 
     let operation_state = operation_state.completed();
-    trace!(app_state.logger, "POST '{}': complete.", url);
+    trace!("POST '{}': complete.", url);
 
     match response {
         Ok(response) => {
@@ -325,7 +310,7 @@ async fn run_operation_post_org(
                     Err(err) => format!("Unable to retrieve response body due to error: '{}'", err),
                 };
 
-                let error = anyhow!(
+                let error = eyre!(
                     "The POST to '{}' failed for '{:?}', with status '{}' and body: '{}'",
                     &url,
                     org_metadata,
@@ -339,6 +324,6 @@ async fn run_operation_post_org(
             // TODO more checks needed
             Ok(operation_state.succeeded())
         }
-        Err(err) => Err(operation_state.failed(anyhow!(format!("{}", err)))),
+        Err(err) => Err(operation_state.failed(eyre!(format!("{}", err)))),
     }
 }

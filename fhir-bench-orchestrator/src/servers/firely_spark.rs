@@ -7,8 +7,8 @@ use crate::{
     sample_data::SampleResource,
     servers::{ServerHandle, ServerName, ServerPlugin},
 };
-use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use eyre::{eyre, Context, Result};
 use std::path::{Path, PathBuf};
 use std::{process::Command, sync::Arc};
 use url::Url;
@@ -90,7 +90,7 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
         .output()
         .context("Failed to run 'docker-compose up'.")?;
     if !docker_up_output.status.success() {
-        return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
+        return Err(eyre!(crate::errors::AppError::ChildProcessFailure(
             docker_up_output.status,
             format!("Failed to launch {} via docker-compose.", SERVER_NAME),
             String::from_utf8_lossy(&docker_up_output.stdout).into(),
@@ -112,7 +112,7 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
     // Wait (up to a timeout) for the server to be ready.
     match wait_for_ready(app_state, &server_handle).await {
         Err(err) => {
-            server_handle.emit_logs_info(&app_state.logger)?;
+            server_handle.emit_logs_info()?;
             Err(err)
         }
         Ok(_) => Ok(Box::new(server_handle)),
@@ -205,7 +205,7 @@ impl ServerHandle for SparkFhirServerHandle {
             .output()
             .context("Failed to run 'docker-compose down'.")?;
         if !docker_down_output.status.success() {
-            return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
+            return Err(eyre!(crate::errors::AppError::ChildProcessFailure(
                 docker_down_output.status,
                 format!("Failed to shutdown {} via docker-compose.", SERVER_NAME),
                 String::from_utf8_lossy(&docker_down_output.stdout).into(),
@@ -225,7 +225,7 @@ impl ServerHandle for SparkFhirServerHandle {
 mod tests {
     use std::{ffi::OsStr, path::Path};
 
-    use anyhow::{anyhow, Result};
+    use eyre::{eyre, Result};
 
     #[tokio::test]
     #[serial_test::serial(sample_data)]
@@ -238,8 +238,8 @@ mod tests {
                 .to_string_lossy()
         ));
 
-        let app_state = crate::tests_util::create_app_state_test(&log_target.clone())
-            .expect("Unable to create test app state.");
+        let app_state =
+            crate::tests_util::create_app_state_test().expect("Unable to create test app state.");
         let server_plugin = app_state
             .find_server_plugin(super::SERVER_NAME)
             .expect("Unable to find server plugin");
@@ -259,7 +259,7 @@ mod tests {
                 }
                 Ok(())
             }
-            Err(err) => Err(anyhow!(
+            Err(err) => Err(eyre!(
                 "Server launch test failed due to error: {:?}. Log output: {:?}",
                 err,
                 log_target

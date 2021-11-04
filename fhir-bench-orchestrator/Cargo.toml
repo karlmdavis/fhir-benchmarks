@@ -18,24 +18,19 @@ http = "0.2"
 reqwest = "0.11"
 
 # Provide application logging facilities.
-log = "0.4"
-# 'slog' is the logging framework used by this application. You can add the `max_level_*` feature to it
-# to crank logging all the way up (`max_level_info` is the default).
-slog = { version = "2", features = ["nested-values"] }
-slog-async = { version = "2" }
-slog-stdlog = { version = "4" }
-slog-scope = { version = "4" }
-slog-json = { version = "2" }
-slog-term = { version = "2" }
-slog_derive = { version = "0.2" }
-erased-serde = { version = "0.3" }
+tracing = { version = "0.1", features = ["log", "release_max_level_info"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "tracing-log"] }
+tracing-error = "0.2"
+
+# Easier idiomatic error handling for applications.
+# Eyre is a mostly-drop-in replacement for `anyhow`,
+#   but with `color-eyre` can leverage `SpanTrace`s when reporting errors.
+eyre = "0.6"
+color-eyre = "0.5"
+thiserror = "1"
 
 # Read environment variables from a file, if present.
 dotenv = "0.15"
-
-# Easier idiomatic error handling.
-anyhow = "1"
-thiserror = "1"
 
 # Provide JSON serialization/deserialization.
 serde = { version = "1", features = ["derive"] }

@@ -1,10 +1,9 @@
 //! Application configuration.
 
 use crate::util::serde_duration_millis;
-use anyhow::{anyhow, Context, Result};
 use chrono::Duration;
+use eyre::{eyre, Context, Result};
 use serde::{Deserialize, Serialize};
-use slog_derive::SerdeValue;
 use std::env;
 use std::path::PathBuf;
 
@@ -21,7 +20,7 @@ pub const ENV_KEY_CONCURRENCY_LEVELS: &str = "FHIR_BENCH_CONCURRENCY_LEVELS";
 pub const ENV_KEY_POPULATION_SIZE: &str = "FHIR_BENCH_POPULATION_SIZE";
 
 /// Represents the application's configuration.
-#[derive(Clone, Deserialize, SerdeValue, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct AppConfig {
     /// The maximum number of iterations to exercise each operation for, during a benchmark run.
     pub iterations: u32,
@@ -117,7 +116,7 @@ pub fn benchmark_dir() -> Result<PathBuf> {
     {
         Ok(current_dir)
     } else {
-        Err(anyhow!(
+        Err(eyre!(
             "Unable to find benchmark directory from current directory: '{:?}'",
             current_dir
         ))

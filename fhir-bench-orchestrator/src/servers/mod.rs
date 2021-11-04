@@ -1,11 +1,11 @@
 //! TODO
 
 use crate::{sample_data::SampleResource, AppState};
-use anyhow::Result;
 use async_trait::async_trait;
+use eyre::Result;
 use serde::{Deserialize, Serialize};
-use slog::{self, info};
 use std::sync::Arc;
+use tracing::info;
 use url::Url;
 
 mod firely_spark;
@@ -76,11 +76,9 @@ pub trait ServerHandle: Sync {
     /// Returns the full log content from the running FHIR server and its dependencies.
     fn emit_logs(&self) -> Result<String>;
 
-    /// Write the full log content from the running FHIR server and its dependencies to the
-    /// specified [slog::Logger] at the info level.
-    fn emit_logs_info(&self, logger: &slog::Logger) -> Result<()> {
+    /// Log the full log content from the running FHIR server and its dependencies at the info level.
+    fn emit_logs_info(&self) -> Result<()> {
         info!(
-            logger,
             "Full docker-compose logs for '{}' server:\n{}",
             self.plugin().server_name(),
             self.emit_logs()?

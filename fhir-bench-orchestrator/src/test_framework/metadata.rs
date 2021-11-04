@@ -7,12 +7,12 @@ use super::{
 use crate::servers::ServerHandle;
 use crate::test_framework::{ServerOperationLog, ServerOperationMeasurement};
 use crate::AppState;
-use anyhow::{anyhow, Result};
 use chrono::prelude::*;
+use eyre::{eyre, Result};
 use futures::prelude::*;
 use hdrhistogram::Histogram;
-use slog::{info, trace, warn};
 use std::convert::TryFrom;
+use tracing::{info, trace, warn};
 use url::Url;
 
 static SERVER_OP_NAME_METADATA: &str = "metadata";
@@ -45,14 +45,12 @@ pub fn create_metadata_url(server_handle: &dyn ServerHandle) -> Url {
 /// were found (in addition to returning the error).
 ///
 /// Parameters:
-/// * `app_state`: the application's [AppState]
 /// * `server_handle`: the [ServerHandle] for the server to test
 /// * `operation_state`: the initial state machine for this operation iteration
 ///
 /// Returns the final [ServerOperationIterationState] containing information about the operation's
 /// success or failure.
 async fn run_operation_metadata(
-    app_state: &AppState,
     server_handle: &dyn ServerHandle,
     operation_state: ServerOperationIterationState<ServerOperationIterationStarting>,
 ) -> std::result::Result<
@@ -61,14 +59,14 @@ async fn run_operation_metadata(
 > {
     let url = create_metadata_url(server_handle);
 
-    trace!(app_state.logger, "GET '{}': starting...", url);
+    trace!("GET '{}': starting...", url);
 
     let client = match server_handle.client() {
         Ok(client) => client,
         Err(err) => {
             return Err(operation_state
                 .completed()
-                .failed(anyhow!(format!("Unable to create client: '{}'", err))));
+                .failed(eyre!(format!("Unable to create client: '{}'", err))));
         }
     };
 
@@ -76,7 +74,7 @@ async fn run_operation_metadata(
     let response = request_builder.send().await;
 
     let operation_state = operation_state.completed();
-    trace!(app_state.logger, "GET '{}': complete.", &url.to_string());
+    trace!("GET '{}': complete.", &url.to_string());
 
     match response {
         Ok(response) => {
@@ -89,7 +87,7 @@ async fn run_operation_metadata(
             };
 
             if !response_status.is_success() {
-                let error = anyhow!(
+                let error = eyre!(
                     "The GET /metadata to '{}' failed, with status '{}' and body: '{}'",
                     &url,
                     response_status,
@@ -102,7 +100,7 @@ async fn run_operation_metadata(
             // TODO more checks needed
             Ok(operation_state.succeeded())
         }
-        Err(err) => Err(operation_state.failed(anyhow!(format!("HTTP request failed: '{}'", err)))),
+        Err(err) => Err(operation_state.failed(eyre!(format!("HTTP request failed: '{}'", err)))),
     }
 }
 
@@ -121,7 +119,6 @@ pub async fn check_metadata_operation(
 ) -> Result<()> {
     let operation_state = ServerOperationIterationState::new();
     let operation = crate::test_framework::metadata::run_operation_metadata(
-        app_state,
         server_handle,
         operation_state.clone(),
     );
@@ -138,7 +135,7 @@ pub async fn check_metadata_operation(
     let result = operation.await?;
     result
         .map(|_| ())
-        .map_err(|err| anyhow!("Metadata check failed: '{:?}'", err))
+        .map_err(|err| eyre!("Metadata check failed: '{:?}'", err))
 }
 
 /// Verifies and benchmarks the FHIR `/metadata` operations for the specified number of concurrent users.
@@ -160,7 +157,7 @@ async fn benchmark_operation_metadata_for_users(
      */
     let operations = (0..app_state.config.iterations).map(|_| async {
         let operation_state = ServerOperationIterationState::new();
-        let operation = run_operation_metadata(app_state, server_handle, operation_state.clone());
+        let operation = run_operation_metadata(server_handle, operation_state.clone());
         let operation = tokio::time::timeout(
             app_state
                 .config
@@ -175,7 +172,7 @@ async fn benchmark_operation_metadata_for_users(
         let result = result.map_err(|err| {
             operation_state
                 .completed()
-                .failed(anyhow!("Operation timed out: '{}'", err))
+                .failed(eyre!("Operation timed out: '{}'", err))
         });
         result.and_then(|wrapped_result| wrapped_result)
     });
@@ -192,8 +189,8 @@ async fn benchmark_operation_metadata_for_users(
      */
     let mut histogram = Histogram::<u64>::new(3).expect("Unable to construct histogram.");
     info!(
-        app_state.logger,
-        "Benchmarking GET /metadata: '{}' concurrent users: starting...", concurrent_users
+        "Benchmarking GET /metadata: '{}' concurrent users: starting...",
+        concurrent_users
     );
     let started = Utc::now();
     let mut iterations_failed: u32 = 0;
@@ -207,18 +204,15 @@ async fn benchmark_operation_metadata_for_users(
                     .expect("Histogram recording failed.");
             }
             Err(err) => {
-                warn!(
-                    app_state.logger,
-                    "Operation '{}' failed: '{:?}", SERVER_OP_NAME_METADATA, err
-                );
+                warn!("Operation '{}' failed: '{:?}", SERVER_OP_NAME_METADATA, err);
                 iterations_failed += 1;
             }
         }
     }
     let completed = Utc::now();
     info!(
-        app_state.logger,
-        "Benchmarking GET /metadata: '{}' concurrent users: completed.", concurrent_users
+        "Benchmarking GET /metadata: '{}' concurrent users: completed.",
+        concurrent_users
     );
 
     let iterations_succeeded = app_state.config.iterations - iterations_failed;

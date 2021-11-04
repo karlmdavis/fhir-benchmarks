@@ -58,7 +58,7 @@ where
 /// Unit tests for the [Duration] serializer & deserialzer.
 #[cfg(test)]
 mod tests {
-    use anyhow::Result;
+    use eyre::Result;
     use hdrhistogram::Histogram;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
