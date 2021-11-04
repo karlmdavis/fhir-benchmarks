@@ -1,11 +1,11 @@
 //! TODO
 use crate::servers::{ServerHandle, ServerName, ServerPlugin};
 use crate::AppState;
-use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use slog::warn;
+use eyre::{eyre, Context, Result};
 use std::path::{Path, PathBuf};
 use std::{process::Command, sync::Arc};
+use tracing::warn;
 use url::Url;
 
 static SERVER_NAME: &str = "HAPI FHIR JPA Server";
@@ -47,7 +47,7 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
             .output()
             .context("Failed to run 'docker-compose up'.")?;
         if !docker_up_output.status.success() {
-            return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
+            return Err(eyre!(crate::errors::AppError::ChildProcessFailure(
                 docker_up_output.status,
                 "Failed to launch HAPI FHIR JPA Server via docker-compose.".to_owned(),
                 String::from_utf8_lossy(&docker_up_output.stdout).into(),
@@ -69,7 +69,7 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
         // Wait (up to a timeout) for the server to be ready.
         match wait_for_ready(app_state, &server_handle).await {
             Err(err) => {
-                server_handle.emit_logs_info(&app_state.logger)?;
+                server_handle.emit_logs_info()?;
                 Err(err)
             }
             Ok(_) => Ok(Box::new(server_handle)),
@@ -158,8 +158,7 @@ impl ServerHandle for HapiJpaFhirServerHandle {
     ///
     /// Parameters:
     /// * `app_state`: the application's [AppState]
-    /// * `server_handle`: the [ServerHandle] for the server implementation instance being tested
-    async fn expunge_all_content(&self, app_state: &AppState) -> Result<()> {
+    async fn expunge_all_content(&self, _app_state: &AppState) -> Result<()> {
         // FIXME probably want to switch to something that supports async_std here
         let url = self
             .base_url()
@@ -174,8 +173,12 @@ impl ServerHandle for HapiJpaFhirServerHandle {
             .with_context(|| format!("The POST to '{}' failed.", url))?;
 
         if !response.status().is_success() {
-            warn!(app_state.logger, "POST failed"; "url" => url.as_str(), "status" => response.status().as_str());
-            return Err(anyhow!(
+            warn!(
+                url = url.as_str(),
+                status = response.status().as_str(),
+                "POST failed"
+            );
+            return Err(eyre!(
                 "The POST to '{}' failed, with status '{}'.",
                 &url,
                 &response.status()
@@ -192,7 +195,7 @@ impl ServerHandle for HapiJpaFhirServerHandle {
             .output()
             .context("Failed to run 'docker-compose down'.")?;
         if !docker_down_output.status.success() {
-            return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
+            return Err(eyre!(crate::errors::AppError::ChildProcessFailure(
                 docker_down_output.status,
                 "Failed to shutdown HAPI FHIR JPA Server via docker-compose.".to_owned(),
                 String::from_utf8_lossy(&docker_down_output.stdout).into(),
@@ -212,7 +215,7 @@ impl ServerHandle for HapiJpaFhirServerHandle {
 mod tests {
     use std::{ffi::OsStr, path::Path};
 
-    use anyhow::{anyhow, Result};
+    use eyre::{eyre, Result};
 
     #[tokio::test]
     #[serial_test::serial(sample_data)]
@@ -225,8 +228,8 @@ mod tests {
                 .to_string_lossy()
         ));
 
-        let app_state = crate::tests_util::create_app_state_test(&log_target.clone())
-            .expect("Unable to create test app state.");
+        let app_state =
+            crate::tests_util::create_app_state_test().expect("Unable to create test app state.");
         let server_plugin = app_state
             .find_server_plugin(super::SERVER_NAME)
             .expect("Unable to find server plugin");
@@ -246,7 +249,7 @@ mod tests {
                 }
                 Ok(())
             }
-            Err(err) => Err(anyhow!(
+            Err(err) => Err(eyre!(
                 "Server launch test failed due to error: {:?}. Log output: {:?}",
                 err,
                 log_target

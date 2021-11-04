@@ -1,13 +1,13 @@
 //! Functions and types related to the generation of sample data, for use in FHIR servers.
 
 use crate::config::AppConfig;
-use anyhow::{anyhow, Context, Result};
+use eyre::{eyre, Context, Result};
 use serde_json::json;
-use slog::{debug, info, trace, Logger};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{collections::HashSet, io::BufReader};
+use tracing::{debug, info, trace};
 
 /// Represents sample data that was generated for the application.
 #[derive(Debug)]
@@ -29,9 +29,6 @@ pub struct SampleData {
 
 /// Provides an [Iterator] for all of the [SampleResource]s from a set of [SampleData].
 pub struct SampleResourceIter {
-    /// The [Logger] to send events to.
-    logger: Logger,
-
     /// The name of the FHIR resource type to extract.
     resource_type: String,
 
@@ -54,11 +51,7 @@ impl SampleResourceIter {
     /// * `logger`: send log events here
     /// * `sample_data`: the [SampleData] to extract resources from
     /// * `resource_type`: the name of the FHIR resource type to extract
-    pub fn new(
-        logger: &Logger,
-        sample_data: &SampleData,
-        resource_type: String,
-    ) -> SampleResourceIter {
+    pub fn new(sample_data: &SampleData, resource_type: String) -> SampleResourceIter {
         // We "cheat" a bit here for some resource types, as we know that Synthea will ensure that all
         // unique instances of them land in a specific file.
         let sample_files = match resource_type.as_str() {
@@ -74,8 +67,6 @@ impl SampleResourceIter {
         };
 
         SampleResourceIter {
-            logger: logger.clone(),
-
             sample_files, // Fun note: we'll consume the files backwards. Whatever.
             resource_type,
             sample_resources: None,
@@ -89,7 +80,11 @@ impl SampleResourceIter {
         if self.sample_resources.is_none() || self.sample_resources.as_ref().unwrap().is_empty() {
             if let Some(sample_file) = self.sample_files.pop() {
                 let sample_resources = parse_sample_resources(&sample_file)?;
-                debug!(self.logger, "Popped new file."; "sample_file" => sample_file.to_str(), "sample_resources.len()" => sample_resources.len());
+                debug!(
+                    sample_file = sample_file.to_str(),
+                    sample_resources.len = sample_resources.len(),
+                    "Popped new file."
+                );
                 assert!(!sample_resources.is_empty(), "Empty sample data file.");
                 self.sample_resources = Some(sample_resources);
             };
@@ -118,7 +113,7 @@ fn parse_sample_resources(sample_file: &Path) -> Result<Vec<SampleResource>> {
     let bundle: serde_json::Value = serde_json::from_reader(reader)?;
     let entries = match bundle["entry"].as_array() {
         Some(entries) => Ok(entries.to_owned()),
-        None => Err(anyhow!(
+        None => Err(eyre!(
             "Unable to parse sample Bundle from '{:?}'.",
             sample_file
         )),
@@ -163,9 +158,8 @@ impl Iterator for SampleResourceIter {
         let mut next_resource_unfiltered = self
             .next_resource_unfiltered()
             .expect("Unable to get next sample resource.");
-        trace!(self.logger, "Popped new resource.";
-            "next_resource_unfiltered" =>
-                &next_resource_unfiltered.as_ref().map(|r| &r.metadata));
+        trace!(next_resource_unfiltered =
+                ?&next_resource_unfiltered.as_ref().map(|r| &r.metadata), "Popped new resource.");
         while next_resource_unfiltered.is_some() {
             // Don't return any duplicates.
             let source_id = &next_resource_unfiltered
@@ -184,7 +178,7 @@ impl Iterator for SampleResourceIter {
                         .metadata
                         .resource_type
                 {
-                    trace!(self.logger, "Found matching resource type.");
+                    trace!("Found matching resource type.");
                     break;
                 }
             }
@@ -192,9 +186,8 @@ impl Iterator for SampleResourceIter {
             next_resource_unfiltered = self
                 .next_resource_unfiltered()
                 .expect("Unable to get next sample resource.");
-            trace!(self.logger, "Popped new resource.";
-                "next_resource_unfiltered" =>
-                    &next_resource_unfiltered.as_ref().map(|r| &r.metadata));
+            trace!(next_resource_unfiltered =
+                    ?&next_resource_unfiltered.as_ref().map(|r| &r.metadata), "Popped new resource.");
         }
 
         // At this point, we either found a match or exhausted the samples.
@@ -216,18 +209,6 @@ pub struct SampleResourceMetadata {
     pub source_id: String,
 }
 
-/// Ensures that we can use [SampleResourceMetadata] in log events.
-impl slog::Value for SampleResourceMetadata {
-    fn serialize(
-        &self,
-        _record: &slog::Record,
-        key: slog::Key,
-        serializer: &mut dyn slog::Serializer,
-    ) -> slog::Result {
-        serializer.emit_arguments(key, &format_args!("{:?}", *self))
-    }
-}
-
 /// Represents a sample FHIR resource that has been extracted from a larger set of [SampleData].
 #[derive(Clone)]
 pub struct SampleResource {
@@ -241,24 +222,19 @@ pub struct SampleResource {
 impl SampleData {
     /// Returns a [SampleResourceIter], which implements [Iterator], for all of the sample
     /// `Organization` resources available in this [SampleData].
-    ///
-    /// Parameters:
-    /// * `logger`: send log events here
-    pub fn iter_orgs(&self, logger: &Logger) -> impl Iterator<Item = SampleResource> {
-        SampleResourceIter::new(logger, self, "Organization".to_string())
+    pub fn iter_orgs(&self) -> impl Iterator<Item = SampleResource> {
+        SampleResourceIter::new(self, "Organization".to_string())
     }
 }
 
 /// Generates the sample data needed by the application, as specified/configured in [AppConfig].
 ///
 /// Parameters:
-/// * `logger`: send log events here
 /// * `config`: the application's configuration
 ///
 /// Returns the [SampleData] that was generated.
-pub fn generate_data_using_config(logger: &Logger, config: &AppConfig) -> Result<SampleData> {
+pub fn generate_data_using_config(config: &AppConfig) -> Result<SampleData> {
     generate_data(
-        logger,
         config.benchmark_dir()?.join("synthetic-data").as_path(),
         config.population_size,
         config
@@ -272,7 +248,6 @@ pub fn generate_data_using_config(logger: &Logger, config: &AppConfig) -> Result
 /// Generates the sample data needed by the application, as specified/configured in [AppConfig].
 ///
 /// Parameters:
-/// * `logger`: send log events here
 /// * `synthea_dir`: the `synthetic-data` directory in this project, which contains the Synthea application
 ///    to use
 /// * `population_size`: the target synthetic population size to generate, which Synthea will likely
@@ -282,13 +257,12 @@ pub fn generate_data_using_config(logger: &Logger, config: &AppConfig) -> Result
 ///
 /// Returns the [SampleData] that was generated.
 pub fn generate_data(
-    logger: &Logger,
     synthea_dir: &Path,
     population_size: u32,
     target_dir: &Path,
 ) -> Result<SampleData> {
     if !synthea_dir.is_dir() {
-        return Err(anyhow!(format!(
+        return Err(eyre!(format!(
             "unable to read directory: '{:?}'",
             synthea_dir
         )));
@@ -329,10 +303,10 @@ pub fn generate_data(
     /*
      * Build and run the Docker-ized version of Synthea.
      */
-    info!(logger, "Sample data: generating...");
+    info!("Sample data: generating...");
     let synthea_bin: PathBuf = synthea_dir.join("generate-synthetic-data.sh");
     if !synthea_bin.is_file() {
-        return Err(anyhow!(format!("unable to read file: '{:?}'", synthea_bin)));
+        return Err(eyre!(format!("unable to read file: '{:?}'", synthea_bin)));
     }
     let synthea_process = Command::new(synthea_bin)
         .args(&[
@@ -345,14 +319,14 @@ pub fn generate_data(
         .output()
         .context("Failed to run 'synthetic-data/generate-synthetic-data.sh'.")?;
     if !synthea_process.status.success() {
-        return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
+        return Err(eyre!(crate::errors::AppError::ChildProcessFailure(
             synthea_process.status,
             "Synthea process for sample data generation failed.".into(),
             String::from_utf8_lossy(&synthea_process.stdout).into(),
             String::from_utf8_lossy(&synthea_process.stderr).into()
         )));
     }
-    info!(logger, "Sample data: generated.");
+    info!("Sample data: generated.");
 
     // Write out the config that was used to generate the data.
     let config_file = File::create(&config_path).with_context(|| {
@@ -382,11 +356,11 @@ fn find_sample_data(data_dir: PathBuf) -> Result<SampleData> {
         let file_name = file
             .file_name()
             .into_string()
-            .map_err(|e| anyhow!(format!("Error reading file: '{}'", e.to_string_lossy())))?;
+            .map_err(|e| eyre!(format!("Error reading file: '{}'", e.to_string_lossy())))?;
 
         if file_name.starts_with("hospitalInformation") {
             if hospitals.is_some() {
-                return Err(anyhow!(
+                return Err(eyre!(
                     "multiple hospitalInformation files: '{:?}' and '{:?}'",
                     file,
                     hospitals
@@ -395,7 +369,7 @@ fn find_sample_data(data_dir: PathBuf) -> Result<SampleData> {
             hospitals = Some(file.path());
         } else if file_name.starts_with("practitionerInformation") {
             if practitioners.is_some() {
-                return Err(anyhow!(
+                return Err(eyre!(
                     "multiple practitionerInformation files: '{:?}' and '{:?}'",
                     file,
                     practitioners
@@ -410,9 +384,9 @@ fn find_sample_data(data_dir: PathBuf) -> Result<SampleData> {
     }
 
     Ok(SampleData {
-        hospitals: hospitals.ok_or_else(|| anyhow!("No hospitalInformation output file."))?,
+        hospitals: hospitals.ok_or_else(|| eyre!("No hospitalInformation output file."))?,
         practitioners: practitioners
-            .ok_or_else(|| anyhow!("No practitionerInformation output file."))?,
+            .ok_or_else(|| eyre!("No practitionerInformation output file."))?,
         patients,
     })
 }
@@ -421,29 +395,15 @@ fn find_sample_data(data_dir: PathBuf) -> Result<SampleData> {
 #[cfg(test)]
 mod tests {
     use crate::sample_data::{SampleResource, SampleResourceMetadata};
-    use anyhow::Result;
-    use slog::{self, o, Drain};
+    use eyre::Result;
     use std::collections::HashMap;
-
-    /// Builds the root Logger for tests to use.
-    fn create_test_logger() -> slog::Logger {
-        let logger = {
-            let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
-            let drain = slog_term::FullFormat::new(decorator).build().fuse();
-
-            slog::Logger::root_typed(drain, o!()).into_erased()
-        };
-        logger
-    }
 
     /// Verifies that [crate::sample_data::generate_data] works as expected.
     #[test]
     fn generate_data() -> Result<()> {
-        let logger = create_test_logger();
         let benchmark_dir = crate::config::benchmark_dir()?;
         let target_dir = tempfile::tempdir()?;
         let sample_data = super::generate_data(
-            &logger,
             benchmark_dir.join("synthetic-data").as_path(),
             10,
             target_dir.path(),
@@ -462,16 +422,14 @@ mod tests {
     /// Verifies that [crate::sample_data::SampleData::iter_orgs] works as expected.
     #[test]
     fn iter_orgs() -> Result<()> {
-        let logger = create_test_logger();
         let benchmark_dir = crate::config::benchmark_dir()?;
         let target_dir = tempfile::tempdir()?;
         let sample_data = super::generate_data(
-            &logger,
             benchmark_dir.join("synthetic-data").as_path(),
             10,
             target_dir.path(),
         )?;
-        let orgs: Vec<SampleResource> = sample_data.iter_orgs(&logger).collect();
+        let orgs: Vec<SampleResource> = sample_data.iter_orgs().collect();
 
         // Synthea generates randomized output, but our default config should always produce at least this
         // many orgs.

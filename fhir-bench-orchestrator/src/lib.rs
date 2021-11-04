@@ -12,14 +12,15 @@ use crate::errors::AppError;
 use crate::sample_data::SampleData;
 use crate::servers::{ServerHandle, ServerPlugin};
 use crate::test_framework::{FrameworkOperationLog, FrameworkOperationResult, FrameworkResults};
-use anyhow::{anyhow, Context, Result};
 use chrono::prelude::*;
-use slog::{self, info, o, Drain};
+use eyre::{eyre, Result, WrapErr};
 use std::sync::Arc;
+use tracing::info;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{fmt, fmt::format::FmtSpan, EnvFilter};
 
 /// Represents the application's context/state.
 pub struct AppState {
-    pub logger: slog::Logger,
     pub config: AppConfig,
     pub server_plugins: Vec<Arc<dyn ServerPlugin>>,
     pub sample_data: SampleData,
@@ -37,13 +38,23 @@ impl AppState {
 
 /// The library crate's primary entry point: this does all the things.
 pub async fn run_bench_orchestrator() -> Result<()> {
+    // Initialize tracing & logging. Because the "tracing-log" feature from "tracing-subscriber" is active,
+    // this will also route all log crate usage (from our dependencies) to tracing, instead.
+    let fmt_layer = fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+        .with_target(false);
+    let filter_layer = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
+    tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(fmt_layer)
+        .with(tracing_error::ErrorLayer::default())
+        .init();
+
     // Initialize the app's state.
     let app_state = create_app_state()?;
-
-    // Route all log crate usage (from our dependencies) to slog, instead.
-    // Note: This has to stay in scope in order to keep working.
-    let _scope_guard = slog_scope::set_global_logger(app_state.logger.clone());
-    slog_stdlog::init_with_level(log::Level::Info)?;
 
     // Verify that pre-requisites are present.
     verify_prereqs()?;
@@ -59,19 +70,11 @@ pub async fn run_bench_orchestrator() -> Result<()> {
             .ok_or_else(|| AppError::UnknownServerError(server_plugin.server_name().clone()))?;
 
         // Launch the implementation's server, etc. This will likely take a while.
-        info!(
-            app_state.logger,
-            "'{}': launching...",
-            server_plugin.server_name()
-        );
+        info!("'{}': launching...", server_plugin.server_name());
         let launch_started = Utc::now();
         let launch_result = server_plugin.launch(&app_state).await;
         let launch_completed = Utc::now();
-        info!(
-            app_state.logger,
-            "'{}': launched.",
-            server_plugin.server_name()
-        );
+        info!("'{}': launched.", server_plugin.server_name());
 
         // Destructure the launch result into success and failure objects, so they have separate ownership.
         let (server_handle, launch_error) = match launch_result {
@@ -107,11 +110,7 @@ pub async fn run_bench_orchestrator() -> Result<()> {
             server_result.operations = Some(operations);
 
             // Shutdown and cleanup the server and its resources.
-            info!(
-                app_state.logger,
-                "'{}': shutting down...",
-                server_plugin.server_name()
-            );
+            info!("'{}': shutting down...", server_plugin.server_name());
 
             // Optionally pause for manual debugging.
             // std::io::stdin().read_line(&mut String::new()).unwrap();
@@ -119,11 +118,7 @@ pub async fn run_bench_orchestrator() -> Result<()> {
             let shutdown_started = Utc::now();
             let shutdown_result = server_handle.shutdown();
             let shutdown_completed = Utc::now();
-            info!(
-                app_state.logger,
-                "'{}': shut down.",
-                server_plugin.server_name()
-            );
+            info!("'{}': shut down.", server_plugin.server_name());
             server_result.shutdown = Some(FrameworkOperationLog {
                 started: shutdown_started,
                 completed: shutdown_completed,
@@ -144,9 +139,6 @@ pub async fn run_bench_orchestrator() -> Result<()> {
 
 /// Initializes the [AppState].
 fn create_app_state() -> Result<AppState> {
-    // Create the root slog logger.
-    let logger = create_logger_root();
-
     // Parse command line args.
     let config = AppConfig::new()?;
 
@@ -154,27 +146,14 @@ fn create_app_state() -> Result<AppState> {
     let server_plugins: Vec<Arc<dyn ServerPlugin>> = servers::create_server_plugins()?;
 
     // Setup all global/shared resources.
-    let sample_data = sample_data::generate_data_using_config(&logger, &config)
+    let sample_data = sample_data::generate_data_using_config(&config)
         .context("Error when generating sample data.")?;
 
     Ok(AppState {
-        logger,
         config,
         server_plugins,
         sample_data,
     })
-}
-
-/// Builds the root Logger for the application to use.
-fn create_logger_root() -> slog::Logger {
-    let drain = slog_json::Json::new(std::io::stderr())
-        .set_pretty(true)
-        .add_default_keys()
-        .build()
-        .fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-
-    slog::Logger::root(drain, o!())
 }
 
 /// Verifies that the required tools are present on this system.
@@ -186,7 +165,7 @@ fn verify_prereqs() -> Result<()> {
         .output()
         .context("Failed to run 'docker-compose --help'.")?;
     if !docker_compose_output.status.success() {
-        return Err(anyhow!(crate::errors::AppError::ChildProcessFailure(
+        return Err(eyre!(crate::errors::AppError::ChildProcessFailure(
             docker_compose_output.status,
             "Missing pre-req: docker-compose.".to_owned(),
             String::from_utf8_lossy(&docker_compose_output.stdout).into(),
@@ -206,31 +185,21 @@ fn output_results(framework_results: &FrameworkResults) {
 /// Provides utility code for use in tests.
 #[cfg(test)]
 mod tests_util {
-    use std::{fs::OpenOptions, path::Path, sync::Arc};
+    use std::sync::Arc;
 
     use crate::{
         sample_data,
         servers::{self, ServerPlugin},
         AppConfig, AppState,
     };
-    use anyhow::{Context, Result};
-    use slog::{o, Drain};
+    use eyre::{Result, WrapErr};
 
     /// Builds an [AppState] for tests to use.
     ///
     /// Please note that this is not safe for concurrent use, as the sample data is generated in a shared
     /// directory, which can cause race conditions. Any tests using this should have a
     /// `#[serial_test::serial(sample_data)]` attribute added to them to avoid spurious failures.
-    ///
-    /// Parameters:
-    /// * `log_target`: the [Path] to write log output to
-    pub fn create_app_state_test<P>(log_target: P) -> Result<AppState>
-    where
-        P: AsRef<Path>,
-    {
-        // Create the root slog logger.
-        let logger = create_logger_root_test(log_target);
-
+    pub fn create_app_state_test() -> Result<AppState> {
         // Parse command line args.
         let config = AppConfig::new()?;
 
@@ -238,34 +207,13 @@ mod tests_util {
         let server_plugins: Vec<Arc<dyn ServerPlugin>> = servers::create_server_plugins()?;
 
         // Setup all global/shared resources.
-        let sample_data = sample_data::generate_data_using_config(&logger, &config)
+        let sample_data = sample_data::generate_data_using_config(&config)
             .context("Error when generating sample data.")?;
 
         Ok(AppState {
-            logger,
             config,
             server_plugins,
             sample_data,
         })
-    }
-
-    /// Builds the root [slog::Logger] for the application to use, configured to output to the specified stream.
-    ///
-    /// Parameters:
-    /// * `log_target`: the [Path] to write log output to
-    fn create_logger_root_test<P>(log_target: P) -> slog::Logger
-    where
-        P: AsRef<Path>,
-    {
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(log_target)
-            .unwrap();
-        let drain = slog_json::Json::default(file).fuse();
-        let drain = slog_async::Async::new(drain).build().fuse();
-
-        slog::Logger::root(drain, o!())
     }
 }

@@ -13,7 +13,7 @@
 //!     #[Buckets =           27, SubBuckets     =         2048]
 //! ```
 
-use anyhow::Result;
+use eyre::Result;
 use hdrhistogram::Histogram;
 use std::fmt::Display;
 
