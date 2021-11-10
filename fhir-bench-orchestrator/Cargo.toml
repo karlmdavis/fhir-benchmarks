@@ -21,6 +21,7 @@ reqwest = "0.11"
 tracing = { version = "0.1", features = ["log", "release_max_level_info"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "tracing-log"] }
 tracing-error = "0.2"
+atty = "0.2"
 
 # Easier idiomatic error handling for applications.
 # Eyre is a mostly-drop-in replacement for `anyhow`,

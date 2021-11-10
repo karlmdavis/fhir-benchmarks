@@ -37,11 +37,17 @@ impl AppState {
 
 /// The library crate's primary entry point: this does all the things.
 pub async fn run_bench_orchestrator() -> Result<()> {
-    // Initialize tracing & logging. Because the "tracing-log" feature from "tracing-subscriber" is active,
-    // this will also route all log crate usage (from our dependencies) to tracing, instead.
+    /* Initialize tracing & logging. Because the "tracing-log" feature from "tracing-subscriber" is active,
+    this will also route all log crate usage (from our dependencies) to tracing, instead. */
     let fmt_layer = fmt::layer()
         .with_writer(std::io::stderr)
+        .with_ansi(atty::is(atty::Stream::Stderr))
+        /* NEW and CLOSE cover the start and end of every run through a span, respectively. Generally, at
+        least NEW should be enabled here, so users can keep track of progress, as most progress logging is
+        provided via info spans in the application. */
         .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+        /* Set this to true to include code locations in each log message. They're disnabled by default as
+        they add a lot of noise, though they're helpful if you're trying to debug library code. */
         .with_target(false);
     let filter_layer = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("info"))
