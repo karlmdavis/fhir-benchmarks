@@ -66,8 +66,7 @@ Then, run these commands to clone, build, and run the benchmark suite's tests:
 $ git clone https://github.com/karlmdavis/fhir-benchmarks.git
 $ cd fhir-benchmarks
 $ # Pull in the submodules:
-$ git submodule init
-$ git submodule sync
+$ git submodule update --init --recursive
 $ # Build in debug mode and run tests:
 $ cargo test
 $ # Build in release mode and run benchmarks:
