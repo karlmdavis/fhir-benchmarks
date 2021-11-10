@@ -71,7 +71,7 @@ $ # Build in debug mode and run tests:
 $ cargo test
 $ # Build in release mode and run benchmarks:
 $ cargo run --release \
-  | tee ./results/results-release-$(date --iso-8601=seconds).json
+  | tee ./results/results-release-$(date -u +"%Y-%m-%dT%H:%M:%SZ").json
 ```
 
 Both the tests and the benchmarks themselves will automatically build the Docker containers for the FHIR servers and Synthea, as needed.
@@ -83,7 +83,7 @@ $ FHIR_BENCH_ITERATIONS=1000 \
   FHIR_BENCH_CONCURRENCY_LEVELS=1,2,8 \
   FHIR_BENCH_POPULATION_SIZE=1000 \
     cargo run --release \
-    | tee ./results/benchmark-$(date --iso-8601=seconds).json
+    | tee ./results/benchmark-$(date -u +"%Y-%m-%dT%H:%M:%SZ").json
 ```
 
 
