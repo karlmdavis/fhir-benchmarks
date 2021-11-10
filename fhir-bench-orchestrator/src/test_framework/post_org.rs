@@ -14,7 +14,7 @@ use eyre::eyre;
 use futures::prelude::*;
 use hdrhistogram::Histogram;
 use std::convert::TryFrom;
-use tracing::{info, trace, warn};
+use tracing::{info_span, trace_span, warn, Instrument};
 use url::Url;
 
 static SERVER_OP_NAME_POST_ORG: &str = "POST /Organization";
@@ -27,11 +27,11 @@ static SERVER_OP_NAME_POST_ORG: &str = "POST /Organization";
 /// * `server_handle`: the [ServerHandle] for the server implementation instance being tested
 ///
 /// Returns a [ServerOperationLog] detailing the results of the benchmark attempt.
+#[tracing::instrument(level = "trace", skip(app_state, server_handle))]
 pub async fn benchmark_post_org(
     app_state: &AppState,
     server_handle: &dyn ServerHandle,
 ) -> ServerOperationLog {
-    trace!("Benchmarking POST /Organization: starting...");
     let mut server_op_log = ServerOperationLog::new(SERVER_OP_NAME_POST_ORG.into());
 
     for concurrent_users in app_state.config.concurrency_levels.clone() {
@@ -40,7 +40,6 @@ pub async fn benchmark_post_org(
         server_op_log.measurements.push(measurement);
     }
 
-    trace!("Benchmarking POST /Organization: completed.");
     server_op_log
 }
 
@@ -52,6 +51,7 @@ pub async fn benchmark_post_org(
 /// * `concurrent_users`: the number of users to try and test with concurrently
 ///
 /// Returns a [ServerOperationMeasurement] with the results.
+#[tracing::instrument(level = "info", skip(app_state, server_handle))]
 async fn benchmark_post_org_for_users(
     app_state: &AppState,
     server_handle: &dyn ServerHandle,
@@ -59,10 +59,6 @@ async fn benchmark_post_org_for_users(
 ) -> ServerOperationMeasurement {
     // Setup the results tracking state.
     let mut histogram = Histogram::<u64>::new(3).expect("Unable to construct histogram.");
-    info!(
-        "Benchmarking POST /Organization: '{}' concurrent users: starting...",
-        concurrent_users
-    );
     let started = Utc::now();
     let mut execution_duration: Duration = Duration::seconds(0);
     let mut iterations_attempted: u32 = 0;
@@ -107,10 +103,6 @@ async fn benchmark_post_org_for_users(
             .sample_data
             .iter_orgs()
             .take(usize::try_from(group_iterations).unwrap());
-        info!(
-            "Benchmarking POST /Organization: '{}' concurrent users: group '{}/{}' with '{}' iterations: starting...",
-            concurrent_users, group_index + 1, groups, group_iterations
-        );
         let group_started = Utc::now();
 
         // Run the iterations for this group.
@@ -120,13 +112,16 @@ async fn benchmark_post_org_for_users(
             concurrent_users,
             sample_data,
         )
+        .instrument(info_span!(
+            "benchmark_post_org_for_users_and_data",
+            concurrent_users,
+            group_index,
+            group_count = groups,
+            group_iterations
+        ))
         .await;
 
         let group_completed = Utc::now();
-        info!(
-            "Benchmarking POST /Organization: '{}' concurrent users: group '{}/{}' with '{}' iterations: completed.",
-            concurrent_users, group_index + 1, groups, group_iterations
-        );
         for operation_result in group_results {
             match operation_result {
                 Ok(operation_success) => {
@@ -147,10 +142,6 @@ async fn benchmark_post_org_for_users(
     }
 
     let completed = Utc::now();
-    info!(
-        "Benchmarking POST /Organization: '{}' concurrent users: completed.",
-        concurrent_users
-    );
 
     let iterations_succeeded = app_state.config.iterations - iterations_failed;
     let execution_duration = completed - started;
@@ -282,7 +273,6 @@ async fn run_operation_post_org(
         }
     };
 
-    trace!("POST '{}': starting...", url);
     let client = match server_handle.client() {
         Ok(client) => client,
         Err(err) => {
@@ -296,10 +286,12 @@ async fn run_operation_post_org(
         .request_builder(client, http::Method::POST, url.clone())
         .header("Content-Type", "application/fhir+json")
         .body(org_string);
-    let response = request_builder.send().await;
+    let response = request_builder
+        .send()
+        .instrument(trace_span!("POST request", %url))
+        .await;
 
     let operation_state = operation_state.completed();
-    trace!("POST '{}': complete.", url);
 
     match response {
         Ok(response) => {

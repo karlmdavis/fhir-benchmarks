@@ -41,6 +41,7 @@ impl ServerPlugin for IbmFhirServerPlugin {
     }
 }
 
+#[tracing::instrument(level = "info", fields(server_name = SERVER_NAME), skip(app_state))]
 async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
     let server_work_dir = server_work_dir(&app_state.config.benchmark_dir()?);
 
@@ -81,7 +82,10 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
             server_handle.emit_logs_info()?;
             Err(err)
         }
-        Ok(_) => Ok(Box::new(server_handle)),
+        Ok(_) => {
+            let server_handle: Box<dyn ServerHandle> = Box::new(server_handle);
+            Ok(server_handle)
+        }
     }
 }
 
@@ -97,6 +101,7 @@ fn server_work_dir(benchmark_dir: &Path) -> PathBuf {
 /// * `server_handle`: the server to test
 ///
 /// Returns an empty [Result], where an error indicates that the server was not ready.
+#[tracing::instrument(level = "debug", fields(server_name = SERVER_NAME), skip(app_state, server_handle))]
 async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {
         let mut ready = false;
@@ -167,12 +172,14 @@ impl ServerHandle for IbmFhirServerHandle {
         }
     }
 
+    #[tracing::instrument(level = "debug", fields(server_name = SERVER_NAME), skip(self, app_state))]
     async fn expunge_all_content(&self, app_state: &AppState) -> Result<()> {
         self.shutdown()?;
         launch_server(app_state).await?;
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", fields(server_name = SERVER_NAME), skip(self))]
     fn shutdown(&self) -> Result<()> {
         let docker_down_output = Command::new("./docker_compose_ibm_fhir.sh")
             .args(&["down"])
@@ -213,8 +220,9 @@ mod tests {
                 .to_string_lossy()
         ));
 
-        let app_state =
-            crate::tests_util::create_app_state_test().expect("Unable to create test app state.");
+        let app_state = crate::tests_util::create_app_state_test()
+            .await
+            .expect("Unable to create test app state.");
         let server_plugin = app_state
             .find_server_plugin(super::SERVER_NAME)
             .expect("Unable to find server plugin");

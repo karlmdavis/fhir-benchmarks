@@ -12,7 +12,7 @@ use eyre::{eyre, Result};
 use futures::prelude::*;
 use hdrhistogram::Histogram;
 use std::convert::TryFrom;
-use tracing::{info, trace, warn};
+use tracing::{trace_span, warn, Instrument};
 use url::Url;
 
 static SERVER_OP_NAME_METADATA: &str = "metadata";
@@ -59,8 +59,6 @@ async fn run_operation_metadata(
 > {
     let url = create_metadata_url(server_handle);
 
-    trace!("GET '{}': starting...", url);
-
     let client = match server_handle.client() {
         Ok(client) => client,
         Err(err) => {
@@ -71,10 +69,12 @@ async fn run_operation_metadata(
     };
 
     let request_builder = server_handle.request_builder(client, http::Method::GET, url.clone());
-    let response = request_builder.send().await;
+    let response = request_builder
+        .send()
+        .instrument(trace_span!("GET request", %url))
+        .await;
 
     let operation_state = operation_state.completed();
-    trace!("GET '{}': complete.", &url.to_string());
 
     match response {
         Ok(response) => {
@@ -146,6 +146,7 @@ pub async fn check_metadata_operation(
 /// * `concurrent_users`: the number of users to try and test with concurrently
 ///
 /// Returns a [ServerOperationMeasurement] with the results.
+#[tracing::instrument(level = "info", skip(app_state, server_handle))]
 async fn benchmark_operation_metadata_for_users(
     app_state: &AppState,
     server_handle: &dyn ServerHandle,
@@ -188,10 +189,6 @@ async fn benchmark_operation_metadata_for_users(
      * Kick off the execution of the stream, summing up all of the failures that are encountered.
      */
     let mut histogram = Histogram::<u64>::new(3).expect("Unable to construct histogram.");
-    info!(
-        "Benchmarking GET /metadata: '{}' concurrent users: starting...",
-        concurrent_users
-    );
     let started = Utc::now();
     let mut iterations_failed: u32 = 0;
     while let Some(operation_result) = operations.next().await {
@@ -210,10 +207,6 @@ async fn benchmark_operation_metadata_for_users(
         }
     }
     let completed = Utc::now();
-    info!(
-        "Benchmarking GET /metadata: '{}' concurrent users: completed.",
-        concurrent_users
-    );
 
     let iterations_succeeded = app_state.config.iterations - iterations_failed;
     let execution_duration = completed - started;
