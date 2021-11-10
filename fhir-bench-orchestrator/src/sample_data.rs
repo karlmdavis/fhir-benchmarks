@@ -5,9 +5,9 @@ use eyre::{eyre, Context, Result};
 use serde_json::json;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::{collections::HashSet, io::BufReader};
-use tracing::{debug, info, trace};
+use tokio::process::Command;
+use tracing::{debug, info_span, trace, Instrument};
 
 /// Represents sample data that was generated for the application.
 #[derive(Debug)]
@@ -75,6 +75,7 @@ impl SampleResourceIter {
     }
 
     /// Pops off the next [SampleResource] that can be found, if any,
+    #[tracing::instrument(level = "trace", skip(self), fields(result), err)]
     fn next_resource_unfiltered(&mut self) -> Result<Option<SampleResource>> {
         // If necessary (and possible), consume the next sample_file, to populate sample_resources..
         if self.sample_resources.is_none() || self.sample_resources.as_ref().unwrap().is_empty() {
@@ -90,11 +91,10 @@ impl SampleResourceIter {
             };
         }
 
-        if self.sample_resources.is_some() {
-            Ok(self.sample_resources.as_mut().unwrap().pop())
-        } else {
-            Ok(None)
-        }
+        let result = self.sample_resources.as_mut().and_then(|s| s.pop());
+        let result_trace = result.as_ref().map(|r| &r.metadata);
+        tracing::Span::current().record("result", &tracing::field::debug(result_trace));
+        Ok(result)
     }
 }
 
@@ -158,8 +158,6 @@ impl Iterator for SampleResourceIter {
         let mut next_resource_unfiltered = self
             .next_resource_unfiltered()
             .expect("Unable to get next sample resource.");
-        trace!(next_resource_unfiltered =
-                ?&next_resource_unfiltered.as_ref().map(|r| &r.metadata), "Popped new resource.");
         while next_resource_unfiltered.is_some() {
             // Don't return any duplicates.
             let source_id = &next_resource_unfiltered
@@ -186,8 +184,6 @@ impl Iterator for SampleResourceIter {
             next_resource_unfiltered = self
                 .next_resource_unfiltered()
                 .expect("Unable to get next sample resource.");
-            trace!(next_resource_unfiltered =
-                    ?&next_resource_unfiltered.as_ref().map(|r| &r.metadata), "Popped new resource.");
         }
 
         // At this point, we either found a match or exhausted the samples.
@@ -233,7 +229,7 @@ impl SampleData {
 /// * `config`: the application's configuration
 ///
 /// Returns the [SampleData] that was generated.
-pub fn generate_data_using_config(config: &AppConfig) -> Result<SampleData> {
+pub async fn generate_data_using_config(config: &AppConfig) -> Result<SampleData> {
     generate_data(
         config.benchmark_dir()?.join("synthetic-data").as_path(),
         config.population_size,
@@ -243,6 +239,7 @@ pub fn generate_data_using_config(config: &AppConfig) -> Result<SampleData> {
             .join("target")
             .as_path(),
     )
+    .await
 }
 
 /// Generates the sample data needed by the application, as specified/configured in [AppConfig].
@@ -256,7 +253,8 @@ pub fn generate_data_using_config(config: &AppConfig) -> Result<SampleData> {
 ///    Synthea will output to a child `fhir` directory in here)
 ///
 /// Returns the [SampleData] that was generated.
-pub fn generate_data(
+#[tracing::instrument(level = "info", skip(synthea_dir, target_dir))]
+pub async fn generate_data(
     synthea_dir: &Path,
     population_size: u32,
     target_dir: &Path,
@@ -303,7 +301,6 @@ pub fn generate_data(
     /*
      * Build and run the Docker-ized version of Synthea.
      */
-    info!("Sample data: generating...");
     let synthea_bin: PathBuf = synthea_dir.join("generate-synthetic-data.sh");
     if !synthea_bin.is_file() {
         return Err(eyre!(format!("unable to read file: '{:?}'", synthea_bin)));
@@ -317,6 +314,8 @@ pub fn generate_data(
         ])
         .current_dir(&synthea_dir)
         .output()
+        .instrument(info_span!("Running Synthea"))
+        .await
         .context("Failed to run 'synthetic-data/generate-synthetic-data.sh'.")?;
     if !synthea_process.status.success() {
         return Err(eyre!(crate::errors::AppError::ChildProcessFailure(
@@ -326,7 +325,6 @@ pub fn generate_data(
             String::from_utf8_lossy(&synthea_process.stderr).into()
         )));
     }
-    info!("Sample data: generated.");
 
     // Write out the config that was used to generate the data.
     let config_file = File::create(&config_path).with_context(|| {
@@ -399,15 +397,16 @@ mod tests {
     use std::collections::HashMap;
 
     /// Verifies that [crate::sample_data::generate_data] works as expected.
-    #[test]
-    fn generate_data() -> Result<()> {
+    #[tokio::test]
+    async fn generate_data() -> Result<()> {
         let benchmark_dir = crate::config::benchmark_dir()?;
         let target_dir = tempfile::tempdir()?;
         let sample_data = super::generate_data(
             benchmark_dir.join("synthetic-data").as_path(),
             10,
             target_dir.path(),
-        );
+        )
+        .await;
 
         assert!(
             sample_data.is_ok(),
@@ -420,15 +419,16 @@ mod tests {
     }
 
     /// Verifies that [crate::sample_data::SampleData::iter_orgs] works as expected.
-    #[test]
-    fn iter_orgs() -> Result<()> {
+    #[tokio::test]
+    async fn iter_orgs() -> Result<()> {
         let benchmark_dir = crate::config::benchmark_dir()?;
         let target_dir = tempfile::tempdir()?;
         let sample_data = super::generate_data(
             benchmark_dir.join("synthetic-data").as_path(),
             10,
             target_dir.path(),
-        )?;
+        )
+        .await?;
         let orgs: Vec<SampleResource> = sample_data.iter_orgs().collect();
 
         // Synthea generates randomized output, but our default config should always produce at least this

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use eyre::{eyre, Context, Result};
 use std::path::{Path, PathBuf};
 use std::{process::Command, sync::Arc};
-use tracing::warn;
+use tracing::{trace_span, warn, Instrument};
 use url::Url;
 
 static SERVER_NAME: &str = "HAPI FHIR JPA Server";
@@ -30,6 +30,7 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
         &self.server_name
     }
 
+    #[tracing::instrument(level = "info", fields(server_name = SERVER_NAME), skip(self, app_state))]
     async fn launch(&self, app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
         let server_work_dir = server_work_dir(&app_state.config.benchmark_dir()?);
 
@@ -72,7 +73,10 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
                 server_handle.emit_logs_info()?;
                 Err(err)
             }
-            Ok(_) => Ok(Box::new(server_handle)),
+            Ok(_) => {
+                let server_handle: Box<dyn ServerHandle> = Box::new(server_handle);
+                Ok(server_handle)
+            }
         }
     }
 }
@@ -91,6 +95,7 @@ fn server_work_dir(benchmark_dir: &Path) -> PathBuf {
 /// * `server_handle`: the server to test
 ///
 /// Returns an empty [Result], where an error indicates that the server was not ready.
+#[tracing::instrument(level = "debug", fields(server_name = SERVER_NAME), skip(app_state, server_handle))]
 async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {
         let mut ready = false;
@@ -158,6 +163,7 @@ impl ServerHandle for HapiJpaFhirServerHandle {
     ///
     /// Parameters:
     /// * `app_state`: the application's [AppState]
+    #[tracing::instrument(level = "debug", fields(server_name = SERVER_NAME), skip(self, _app_state))]
     async fn expunge_all_content(&self, _app_state: &AppState) -> Result<()> {
         // FIXME probably want to switch to something that supports async_std here
         let url = self
@@ -169,6 +175,7 @@ impl ServerHandle for HapiJpaFhirServerHandle {
             .post(url.clone())
             .query(&[("expungeEverything", "true")])
             .send()
+            .instrument(trace_span!("POST request", %url))
             .await
             .with_context(|| format!("The POST to '{}' failed.", url))?;
 
@@ -188,6 +195,7 @@ impl ServerHandle for HapiJpaFhirServerHandle {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", fields(server_name = SERVER_NAME), skip(self))]
     fn shutdown(&self) -> Result<()> {
         let docker_down_output = Command::new("docker-compose")
             .args(&["down"])
@@ -228,8 +236,9 @@ mod tests {
                 .to_string_lossy()
         ));
 
-        let app_state =
-            crate::tests_util::create_app_state_test().expect("Unable to create test app state.");
+        let app_state = crate::tests_util::create_app_state_test()
+            .await
+            .expect("Unable to create test app state.");
         let server_plugin = app_state
             .find_server_plugin(super::SERVER_NAME)
             .expect("Unable to find server plugin");

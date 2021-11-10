@@ -15,7 +15,6 @@ use crate::test_framework::{FrameworkOperationLog, FrameworkOperationResult, Fra
 use chrono::prelude::*;
 use eyre::{eyre, Result, WrapErr};
 use std::sync::Arc;
-use tracing::info;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, fmt::format::FmtSpan, EnvFilter};
 
@@ -54,7 +53,7 @@ pub async fn run_bench_orchestrator() -> Result<()> {
         .init();
 
     // Initialize the app's state.
-    let app_state = create_app_state()?;
+    let app_state = create_app_state().await?;
 
     // Verify that pre-requisites are present.
     verify_prereqs()?;
@@ -70,11 +69,9 @@ pub async fn run_bench_orchestrator() -> Result<()> {
             .ok_or_else(|| AppError::UnknownServerError(server_plugin.server_name().clone()))?;
 
         // Launch the implementation's server, etc. This will likely take a while.
-        info!("'{}': launching...", server_plugin.server_name());
         let launch_started = Utc::now();
         let launch_result = server_plugin.launch(&app_state).await;
         let launch_completed = Utc::now();
-        info!("'{}': launched.", server_plugin.server_name());
 
         // Destructure the launch result into success and failure objects, so they have separate ownership.
         let (server_handle, launch_error) = match launch_result {
@@ -110,7 +107,6 @@ pub async fn run_bench_orchestrator() -> Result<()> {
             server_result.operations = Some(operations);
 
             // Shutdown and cleanup the server and its resources.
-            info!("'{}': shutting down...", server_plugin.server_name());
 
             // Optionally pause for manual debugging.
             // std::io::stdin().read_line(&mut String::new()).unwrap();
@@ -118,7 +114,6 @@ pub async fn run_bench_orchestrator() -> Result<()> {
             let shutdown_started = Utc::now();
             let shutdown_result = server_handle.shutdown();
             let shutdown_completed = Utc::now();
-            info!("'{}': shut down.", server_plugin.server_name());
             server_result.shutdown = Some(FrameworkOperationLog {
                 started: shutdown_started,
                 completed: shutdown_completed,
@@ -138,7 +133,7 @@ pub async fn run_bench_orchestrator() -> Result<()> {
 }
 
 /// Initializes the [AppState].
-fn create_app_state() -> Result<AppState> {
+async fn create_app_state() -> Result<AppState> {
     // Parse command line args.
     let config = AppConfig::new()?;
 
@@ -147,6 +142,7 @@ fn create_app_state() -> Result<AppState> {
 
     // Setup all global/shared resources.
     let sample_data = sample_data::generate_data_using_config(&config)
+        .await
         .context("Error when generating sample data.")?;
 
     Ok(AppState {
@@ -199,7 +195,7 @@ mod tests_util {
     /// Please note that this is not safe for concurrent use, as the sample data is generated in a shared
     /// directory, which can cause race conditions. Any tests using this should have a
     /// `#[serial_test::serial(sample_data)]` attribute added to them to avoid spurious failures.
-    pub fn create_app_state_test() -> Result<AppState> {
+    pub async fn create_app_state_test() -> Result<AppState> {
         // Parse command line args.
         let config = AppConfig::new()?;
 
@@ -208,6 +204,7 @@ mod tests_util {
 
         // Setup all global/shared resources.
         let sample_data = sample_data::generate_data_using_config(&config)
+            .await
             .context("Error when generating sample data.")?;
 
         Ok(AppState {
