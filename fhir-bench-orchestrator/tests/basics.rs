@@ -21,7 +21,7 @@ fn benchmark_small() {
         .env(ENV_KEY_ITERATIONS, "2")
         .env(ENV_KEY_CONCURRENCY_LEVELS, "1,2")
         .env(ENV_KEY_POPULATION_SIZE, "10")
-        .timeout(std::time::Duration::from_secs(60 * 5))
+        .timeout(std::time::Duration::from_secs(60 * 15))
         .ok();
     assert!(
         output.is_ok(),
