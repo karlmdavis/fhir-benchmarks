@@ -71,8 +71,9 @@ mod tests {
     }
 
     /// Verifies that [Duration] values serialize as expected.
-    #[test]
-    fn serialize() -> Result<()> {
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
+    async fn serialize() -> Result<()> {
         let expected = json!({
             "histogram": "HISTFAAAABx4nJNpmSzMwMDAxAABzFCaEUoz2X+AsQA/awKA",
         });
@@ -88,8 +89,9 @@ mod tests {
     }
 
     /// Verifies that [Duration] values deserialize as expected.
-    #[test]
-    fn deserialize() -> Result<()> {
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
+    async fn deserialize() -> Result<()> {
         let mut expected = DurationStruct {
             histogram: Histogram::<u64>::new(3)?,
         };

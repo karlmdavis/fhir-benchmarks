@@ -397,7 +397,8 @@ mod tests {
     use std::collections::HashMap;
 
     /// Verifies that [crate::sample_data::generate_data] works as expected.
-    #[tokio::test]
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
     async fn generate_data() -> Result<()> {
         let benchmark_dir = crate::config::benchmark_dir()?;
         let target_dir = tempfile::tempdir()?;
@@ -419,7 +420,8 @@ mod tests {
     }
 
     /// Verifies that [crate::sample_data::SampleData::iter_orgs] works as expected.
-    #[tokio::test]
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
     async fn iter_orgs() -> Result<()> {
         let benchmark_dir = crate::config::benchmark_dir()?;
         let target_dir = tempfile::tempdir()?;

@@ -447,8 +447,9 @@ mod tests {
     static SERVER_OP_NAME_FAKE: &str = "Operation A";
 
     /// Verifies that `FrameworkOperationLog` serializes as expected.
-    #[test]
-    fn serialize_framework_operation_log() {
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
+    async fn serialize_framework_operation_log() {
         let expected = json!({
             "started": "2020-01-01T13:00:00Z",
             "completed": "2020-01-01T14:00:00Z",
@@ -467,8 +468,9 @@ mod tests {
     }
 
     /// Verifies that `ServerOperationMetrics` serializes as expected.
-    #[test]
-    fn serialize_server_operation_metrics() -> Result<()> {
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
+    async fn serialize_server_operation_metrics() -> Result<()> {
         let expected = json!({
             "throughput_per_second": 42.0,
             "latency_millis_mean": 1.0,
@@ -499,8 +501,9 @@ mod tests {
     }
 
     /// Verifies that `ServerOperationLog` serializes as expected.
-    #[test]
-    fn serialize_server_operation_log() {
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
+    async fn serialize_server_operation_log() {
         let expected = json!({
             "operation": "Operation A",
             "errors": [],
@@ -517,8 +520,9 @@ mod tests {
     }
 
     /// Verifies that [ServerOperationMeasurement] serializes as expected.
-    #[test]
-    fn serialize_server_operation_measurement() -> Result<()> {
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
+    async fn serialize_server_operation_measurement() -> Result<()> {
         let expected = json!({
             "concurrent_users": 10,
             "started": "2020-01-01T15:00:00Z",
@@ -565,8 +569,9 @@ mod tests {
     }
 
     /// Verifies that `FrameworkResults` serializes as expected.
-    #[test]
-    fn serialize_framework_results() -> Result<()> {
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
+    async fn serialize_framework_results() -> Result<()> {
         let expected = json!({
             "started": "2020-01-01T12:00:00Z",
             "completed": "2020-01-01T19:00:00Z",

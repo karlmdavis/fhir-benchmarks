@@ -49,8 +49,9 @@ mod tests {
     }
 
     /// Verifies that [Duration] values serialize as expected.
-    #[test]
-    fn serialize() {
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
+    async fn serialize() {
         let expected = json!({
             "duration": 1000,
         });
@@ -63,8 +64,9 @@ mod tests {
     }
 
     /// Verifies that [Duration] values deserialize as expected.
-    #[test]
-    fn deserialize() {
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
+    async fn deserialize() {
         let expected = DurationStruct {
             duration: Duration::milliseconds(1000),
         };
