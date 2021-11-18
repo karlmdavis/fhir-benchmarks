@@ -110,6 +110,8 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+        env:
+          RUST_BACKTRACE: full
 
   lints:
     name: Lints
