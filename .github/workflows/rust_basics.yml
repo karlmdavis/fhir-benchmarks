@@ -112,6 +112,8 @@ jobs:
           command: test
         env:
           RUST_BACKTRACE: full
+          RUST_LOG: info
+          RUST_LOG_SPAN_EVENTS: new,close
 
   lints:
     name: Lints

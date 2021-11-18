@@ -11,8 +11,9 @@ use fhir_bench_orchestrator::config::{
 use fhir_bench_orchestrator::test_framework::FrameworkResults;
 
 /// Runs a small version of the benchmarks and verifies the results.
-#[test]
-fn benchmark_small() {
+#[tracing::instrument(level = "info")]
+#[test_env_log::test(tokio::test)]
+async fn benchmark_small() {
     // Launch the benchmark suite, just as it would be from a `cargo run` in the project's top directory.
     let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
     let output = cmd

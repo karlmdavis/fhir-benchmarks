@@ -217,7 +217,8 @@ mod tests {
 
     use eyre::{eyre, Result};
 
-    #[tokio::test]
+    #[tracing::instrument(level = "info")]
+    #[test_env_log::test(tokio::test)]
     #[serial_test::serial(sample_data)]
     async fn verify_server_launch() -> Result<()> {
         let log_target = std::env::temp_dir().join(format!(

@@ -65,6 +65,11 @@ tempfile = "3"
 # Used in tests, to ensure that the shared resources are properly managed.
 serial_test = "0.5"
 
+# Used to initialize tracing/logging in tests.
+test-env-log = { version = "0.2", default-features = false, features = ["trace"] }
+tracing = {version = "0.1", default-features = false}
+tracing-subscriber = {version = "0.3", default-features = false, features = ["env-filter", "fmt"]}
+
 
 [build-dependencies]
 
