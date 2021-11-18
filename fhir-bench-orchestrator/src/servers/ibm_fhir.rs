@@ -55,11 +55,11 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
         .args(&["up", "--detach"])
         .current_dir(&server_work_dir)
         .output()
-        .context("Failed to run 'ibm_fhir_launch.sh'.")?;
+        .context("Failed to run 'docker_compose_ibm_fhir.sh'.")?;
     if !docker_up_output.status.success() {
         return Err(eyre!(crate::errors::AppError::ChildProcessFailure(
             docker_up_output.status,
-            "Failed to launch IBM FHIR Server.".to_owned(),
+            format!("Failed to launch {} via Docker Compose.", SERVER_NAME),
             String::from_utf8_lossy(&docker_up_output.stdout).into(),
             String::from_utf8_lossy(&docker_up_output.stderr).into()
         )));

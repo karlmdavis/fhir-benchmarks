@@ -66,34 +66,17 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
     let server_work_dir = server_work_dir(&app_state.config.benchmark_dir()?);
 
     /*
-     * (Re-)download the server's Docker Compose file from the project's GitHub. Note that this
-     * always grabs and overwrites any pre-existing files with the latest.
-     */
-    let compose_url = "https://raw.githubusercontent.com/FirelyTeam/spark/r4/master/.docker/docker-compose.example.yml";
-    let compose_response = reqwest::get(compose_url).await?;
-    let compose_path = server_work_dir.join("docker-compose.yml");
-    let mut compose_file = std::fs::File::create(compose_path)?;
-    let compose_content = compose_response.text().await?;
-    std::io::copy(&mut compose_content.as_bytes(), &mut compose_file)?;
-
-    /*
      * Build and launch the server.
-     *
-     * Note: The environment variables used here are required to get build caching working correctly,
-     * particularly for CI machines where the cache would otherwise be cold.
      */
-
-    let docker_up_output = Command::new("docker-compose")
+    let docker_up_output = Command::new("./docker_compose_firely_spark.sh")
         .args(&["up", "--detach"])
-        .env("COMPOSE_DOCKER_CLI_BUILD", "1")
-        .env("DOCKER_BUILDKIT", "1")
         .current_dir(&server_work_dir)
         .output()
-        .context("Failed to run 'docker-compose up'.")?;
+        .context("Failed to run 'docker_compose_firely_spark.sh'.")?;
     if !docker_up_output.status.success() {
         return Err(eyre!(crate::errors::AppError::ChildProcessFailure(
             docker_up_output.status,
-            format!("Failed to launch {} via docker-compose.", SERVER_NAME),
+            format!("Failed to launch {} via Docker Compose.", SERVER_NAME),
             String::from_utf8_lossy(&docker_up_output.stdout).into(),
             String::from_utf8_lossy(&docker_up_output.stderr).into()
         )));
@@ -186,7 +169,7 @@ impl ServerHandle for SparkFhirServerHandle {
     }
 
     fn emit_logs(&self) -> Result<String> {
-        match Command::new("docker-compose")
+        match Command::new("./docker_compose_firely_spark.sh")
             .args(&["logs", "--no-color"])
             .current_dir(&self.server_work_dir)
             .output()
@@ -206,7 +189,7 @@ impl ServerHandle for SparkFhirServerHandle {
 
     #[tracing::instrument(level = "debug", fields(server_name = SERVER_NAME), skip(self))]
     fn shutdown(&self) -> Result<()> {
-        let docker_down_output = Command::new("docker-compose")
+        let docker_down_output = Command::new("./docker_compose_firely_spark.sh")
             .args(&["down"])
             .current_dir(&self.server_work_dir)
             .output()
