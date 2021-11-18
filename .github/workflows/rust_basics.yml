@@ -94,17 +94,6 @@ jobs:
           login-server: docker.pkg.github.com
           username: karlmdavis
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run Docker Build - hapi_fhir_jpaserver
-        env:
-          DOCKER_BUILDKIT: 1
-        run: |
-          echo 'docker pull'
-          docker pull docker.pkg.github.com/karlmdavis/fhir-benchmarks/hapi-fhir-jpaserver-start || true
-          echo 'docker build'
-          docker build -t docker.pkg.github.com/karlmdavis/fhir-benchmarks/hapi-fhir-jpaserver-start --cache-from docker.pkg.github.com/karlmdavis/fhir-benchmarks/hapi-fhir-jpaserver-start --build-arg BUILDKIT_INLINE_CACHE=1 .
-          echo 'docker push'
-          docker push docker.pkg.github.com/karlmdavis/fhir-benchmarks/hapi-fhir-jpaserver-start
-        working-directory: ./server_builds/hapi_fhir_jpaserver/
       - name: Run Docker Build - synthea
         env:
           DOCKER_BUILDKIT: 1
