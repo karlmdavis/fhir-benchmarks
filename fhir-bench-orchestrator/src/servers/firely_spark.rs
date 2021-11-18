@@ -120,7 +120,7 @@ fn server_work_dir(benchmark_dir: &Path) -> PathBuf {
 /// Returns an empty [Result], where an error indicates that the server was not ready.
 #[tracing::instrument(level = "debug", fields(server_name = SERVER_NAME), skip(app_state, server_handle))]
 async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) -> Result<()> {
-    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+    tokio::time::timeout(std::time::Duration::from_secs(60 * 5), async {
         let mut ready = false;
         let mut probe = None;
 
