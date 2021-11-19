@@ -87,6 +87,36 @@ $ FHIR_BENCH_ITERATIONS=1000 \
 ```
 
 
+## Any Special Setup Needed for Visual Studio Code?
+
+VS Code is hard to beat as an IDE for Rust projects like this one.
+If you'd like to use it, I'd suggest installing the following extensions:
+
+* [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=matklad.rust-analyzer):
+    This extension adds Rust support to VS Code.
+    It's honestly pretty amazing,
+      particularly in how it will mark up your code with helpful type annotations.
+* [crates](https://marketplace.visualstudio.com/items?itemName=serayuzgur.crates):
+    Makes it easy to see if `Cargo.toml` files,
+      which are used to specify the dependencies for a Rust project,
+      are specifying the latest versions of each dependency.
+    Simple, but major quality of life improvement.
+
+You'll want to ensure that your `~/Library/Application Support/Code/User/settings.json` file,
+  which specifies the settings for VS Code,
+  contains the following:
+
+```json
+{
+    "rust-analyzer.runnableEnv": {
+        "RUST_BACKTRACE": "full",
+        "RUST_LOG": "info",
+        "RUST_LOG_SPAN_EVENTS": "new,close"
+    }
+}
+```
+
+
 ## How Can I Contribute to this Effort?
 
 If you'd like to add support for a new FHIR server, additional operations,
