@@ -218,12 +218,10 @@ impl ServerHandle for HapiJpaFhirServerHandle {
 mod tests {
     use std::{ffi::OsStr, path::Path};
 
-    use eyre::{eyre, Result};
-
     #[tracing::instrument(level = "info")]
     #[test_env_log::test(tokio::test)]
     #[serial_test::serial(sample_data)]
-    async fn verify_server_launch() -> Result<()> {
+    async fn verify_server_launch() {
         let log_target = std::env::temp_dir().join(format!(
             "{}_verify_server_launch.log",
             Path::new(file!())
@@ -247,18 +245,14 @@ mod tests {
         };
 
         // Clean up the log if things went well, otherwise return an error with the path to it.
-        match launch_result {
-            Ok(_) => {
-                if log_target.exists() {
-                    std::fs::remove_file(log_target)?;
-                }
-                Ok(())
-            }
-            Err(err) => Err(eyre!(
-                "Server launch test failed due to error: {:?}. Log output: {:?}",
-                err,
-                log_target
-            )),
+        assert!(
+            launch_result.is_ok(),
+            "Server launch test failed due to error: {:?}. Log output: {:?}",
+            launch_result.unwrap_err(),
+            log_target
+        );
+        if log_target.exists() {
+            std::fs::remove_file(log_target).expect("Unable to remove temp file.");
         }
     }
 }

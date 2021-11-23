@@ -58,7 +58,6 @@ where
 /// Unit tests for the [Duration] serializer & deserialzer.
 #[cfg(test)]
 mod tests {
-    use eyre::Result;
     use hdrhistogram::Histogram;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -73,36 +72,38 @@ mod tests {
     /// Verifies that [Duration] values serialize as expected.
     #[tracing::instrument(level = "info")]
     #[test_env_log::test(tokio::test)]
-    async fn serialize() -> Result<()> {
+    async fn serialize() {
         let expected = json!({
             "histogram": "HISTFAAAABx4nJNpmSzMwMDAxAABzFCaEUoz2X+AsQA/awKA",
         });
         let expected = serde_json::to_string(&expected).unwrap();
         let mut actual = DurationStruct {
-            histogram: Histogram::<u64>::new(3)?,
+            histogram: Histogram::<u64>::new(3).expect("Error creating histogram."),
         };
-        actual.histogram.record(1)?;
+        actual
+            .histogram
+            .record(1)
+            .expect("Error recording into histogram.");
         let actual = serde_json::to_string(&actual).unwrap();
         assert_eq!(expected, actual);
-
-        Ok(())
     }
 
     /// Verifies that [Duration] values deserialize as expected.
     #[tracing::instrument(level = "info")]
     #[test_env_log::test(tokio::test)]
-    async fn deserialize() -> Result<()> {
+    async fn deserialize() {
         let mut expected = DurationStruct {
-            histogram: Histogram::<u64>::new(3)?,
+            histogram: Histogram::<u64>::new(3).expect("Error creating histogram."),
         };
-        expected.histogram.record(1)?;
+        expected
+            .histogram
+            .record(1)
+            .expect("Error recording into histogram.");
         let actual = json!({
             "histogram": "HISTFAAAABx4nJNpmSzMwMDAxAABzFCaEUoz2X+AsQA/awKA",
         });
         let actual = serde_json::to_string(&actual).unwrap();
         let actual: DurationStruct = serde_json::from_str(&actual).unwrap();
         assert_eq!(expected.histogram, actual.histogram);
-
-        Ok(())
     }
 }
