@@ -439,7 +439,6 @@ mod tests {
     use crate::{config::AppConfig, test_framework::FrameworkMetadata};
     use chrono::prelude::*;
     use chrono::Duration;
-    use eyre::Result;
     use hdrhistogram::Histogram;
     use serde_json::json;
 
@@ -470,7 +469,7 @@ mod tests {
     /// Verifies that `ServerOperationMetrics` serializes as expected.
     #[tracing::instrument(level = "info")]
     #[test_env_log::test(tokio::test)]
-    async fn serialize_server_operation_metrics() -> Result<()> {
+    async fn serialize_server_operation_metrics() {
         let expected = json!({
             "throughput_per_second": 42.0,
             "latency_millis_mean": 1.0,
@@ -491,13 +490,11 @@ mod tests {
             latency_millis_p99: 1,
             latency_millis_p999: 1,
             latency_millis_p100: 1,
-            latency_histogram: Histogram::<u64>::new(3)?,
+            latency_histogram: Histogram::<u64>::new(3).expect("Error creating histogram."),
             latency_histogram_hgrm_gzip: "foo".into(),
         };
         let actual = serde_json::to_string(&actual).unwrap();
         assert_eq!(expected, actual);
-
-        Ok(())
     }
 
     /// Verifies that `ServerOperationLog` serializes as expected.
@@ -522,7 +519,7 @@ mod tests {
     /// Verifies that [ServerOperationMeasurement] serializes as expected.
     #[tracing::instrument(level = "info")]
     #[test_env_log::test(tokio::test)]
-    async fn serialize_server_operation_measurement() -> Result<()> {
+    async fn serialize_server_operation_measurement() {
         let expected = json!({
             "concurrent_users": 10,
             "started": "2020-01-01T15:00:00Z",
@@ -558,20 +555,18 @@ mod tests {
                 latency_millis_p99: 1,
                 latency_millis_p999: 1,
                 latency_millis_p100: 1,
-                latency_histogram: Histogram::<u64>::new(3)?,
+                latency_histogram: Histogram::<u64>::new(3).expect("Error creating histogram."),
                 latency_histogram_hgrm_gzip: "foo".into(),
             },
         };
         let actual = serde_json::to_string(&actual).unwrap();
         assert_eq!(expected, actual);
-
-        Ok(())
     }
 
     /// Verifies that `FrameworkResults` serializes as expected.
     #[tracing::instrument(level = "info")]
     #[test_env_log::test(tokio::test)]
-    async fn serialize_framework_results() -> Result<()> {
+    async fn serialize_framework_results() {
         let expected = json!({
             "started": "2020-01-01T12:00:00Z",
             "completed": "2020-01-01T19:00:00Z",
@@ -679,7 +674,8 @@ mod tests {
                             latency_millis_p99: 1,
                             latency_millis_p999: 1,
                             latency_millis_p100: 1,
-                            latency_histogram: Histogram::<u64>::new(3)?,
+                            latency_histogram: Histogram::<u64>::new(3)
+                                .expect("Error creating histogram."),
                             latency_histogram_hgrm_gzip: "foo".into(),
                         },
                     }],
@@ -693,7 +689,5 @@ mod tests {
         };
         let actual = serde_json::to_string(&actual).unwrap();
         assert_eq!(expected, actual);
-
-        Ok(())
     }
 }

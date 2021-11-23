@@ -393,15 +393,15 @@ fn find_sample_data(data_dir: PathBuf) -> Result<SampleData> {
 #[cfg(test)]
 mod tests {
     use crate::sample_data::{SampleResource, SampleResourceMetadata};
-    use eyre::Result;
     use std::collections::HashMap;
 
     /// Verifies that [crate::sample_data::generate_data] works as expected.
     #[tracing::instrument(level = "info")]
     #[test_env_log::test(tokio::test)]
-    async fn generate_data() -> Result<()> {
-        let benchmark_dir = crate::config::benchmark_dir()?;
-        let target_dir = tempfile::tempdir()?;
+    async fn generate_data() {
+        let benchmark_dir =
+            crate::config::benchmark_dir().expect("Unable to get benchmark directory.");
+        let target_dir = tempfile::tempdir().expect("Unable to create temp target directory.");
         let sample_data = super::generate_data(
             benchmark_dir.join("synthetic-data").as_path(),
             10,
@@ -414,23 +414,30 @@ mod tests {
             "Sample data generation failed: {:?}",
             sample_data
         );
-        assert_ne!(0, sample_data?.patients.len(), "No patient files found");
-
-        Ok(())
+        assert_ne!(
+            0,
+            sample_data
+                .expect("Failed to generate sample data.")
+                .patients
+                .len(),
+            "No patient files found"
+        );
     }
 
     /// Verifies that [crate::sample_data::SampleData::iter_orgs] works as expected.
     #[tracing::instrument(level = "info")]
     #[test_env_log::test(tokio::test)]
-    async fn iter_orgs() -> Result<()> {
-        let benchmark_dir = crate::config::benchmark_dir()?;
-        let target_dir = tempfile::tempdir()?;
+    async fn iter_orgs() {
+        let benchmark_dir =
+            crate::config::benchmark_dir().expect("Unable to get benchmark directory.");
+        let target_dir = tempfile::tempdir().expect("Unable to create temp target directory.");
         let sample_data = super::generate_data(
             benchmark_dir.join("synthetic-data").as_path(),
             10,
             target_dir.path(),
         )
-        .await?;
+        .await
+        .expect("Failed to generate sample data.");
         let orgs: Vec<SampleResource> = sample_data.iter_orgs().collect();
 
         // Synthea generates randomized output, but our default config should always produce at least this
@@ -463,7 +470,5 @@ mod tests {
                 orgs_with_id
             );
         }
-
-        Ok(())
     }
 }
