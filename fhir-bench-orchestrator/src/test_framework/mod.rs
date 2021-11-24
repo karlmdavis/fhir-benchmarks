@@ -1,7 +1,7 @@
 //! Contains the `run_operations(...)` method and result types for the benchmark test framework.
 
 use crate::config::AppConfig;
-use crate::servers::{ServerHandle, ServerName, ServerPlugin};
+use crate::servers::{ServerHandle, ServerName, ServerPlugin, ServerPluginWrapper};
 use crate::util::{serde_duration_iso8601, serde_histogram};
 use crate::AppState;
 use chrono::prelude::*;
@@ -9,7 +9,6 @@ use chrono::Duration;
 use eyre::Result;
 use hdrhistogram::Histogram;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 pub mod metadata;
 mod post_org;
@@ -39,7 +38,7 @@ impl FrameworkResults {
     /// Params:
     /// * `config`: the application's configuration
     /// * `server_plugins`: the set of [ServerPlugin]s representing the supported FHIR server implementations
-    pub fn new(config: &AppConfig, server_plugins: &[Arc<dyn ServerPlugin>]) -> FrameworkResults {
+    pub fn new(config: &AppConfig, server_plugins: &[ServerPluginWrapper]) -> FrameworkResults {
         FrameworkResults {
             started: Utc::now(),
             completed: None,

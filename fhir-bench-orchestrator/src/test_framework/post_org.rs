@@ -5,6 +5,7 @@ use super::{
     ServerOperationIterationFailed, ServerOperationIterationStarting,
     ServerOperationIterationState, ServerOperationIterationSucceeded, ServerOperationMetrics,
 };
+use crate::servers::ServerPlugin;
 use crate::test_framework::{ServerOperationLog, ServerOperationMeasurement};
 use crate::AppState;
 use crate::{sample_data::SampleResource, servers::ServerHandle};

@@ -5,8 +5,10 @@ use crate::AppState;
 use async_trait::async_trait;
 use eyre::{eyre, Context, Result};
 use std::path::{Path, PathBuf};
-use std::{process::Command, sync::Arc};
+use std::process::Command;
 use url::Url;
+
+use super::ServerPluginWrapper;
 
 static SERVER_NAME: &str = "IBM FHIR Server";
 
@@ -17,6 +19,7 @@ static FHIR_USERNAME: &str = "fhiruser";
 static FHIR_PASSWORD: Option<&'static str> = Some("change-password");
 
 /// The trait object for the `ServerPlugin` implementation for the IBM FHIR server.
+#[derive(Clone, Debug)]
 pub struct IbmFhirServerPlugin {
     server_name: ServerName,
 }
@@ -27,6 +30,12 @@ impl IbmFhirServerPlugin {
         IbmFhirServerPlugin {
             server_name: SERVER_NAME.into(),
         }
+    }
+}
+
+impl Default for IbmFhirServerPlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -71,7 +80,7 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
         .expect("Unable to find server plugin");
     let http_client = super::client_default()?;
     let server_handle = IbmFhirServerHandle {
-        server_plugin,
+        server_plugin: server_plugin.clone(),
         server_work_dir,
         http_client,
     };
@@ -132,15 +141,15 @@ async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) 
 
 /// Represents a launched instance of the IBM FHIR server.
 pub struct IbmFhirServerHandle {
-    server_plugin: Arc<dyn ServerPlugin>,
+    server_plugin: ServerPluginWrapper,
     server_work_dir: PathBuf,
     http_client: reqwest::Client,
 }
 
 #[async_trait]
 impl ServerHandle for IbmFhirServerHandle {
-    fn plugin(&self) -> Arc<dyn ServerPlugin> {
-        self.server_plugin.clone()
+    fn plugin(&self) -> &ServerPluginWrapper {
+        &self.server_plugin
     }
 
     fn base_url(&self) -> url::Url {
@@ -205,6 +214,7 @@ impl ServerHandle for IbmFhirServerHandle {
 /// which is a not-cheap operation.
 #[cfg(test)]
 mod tests {
+    use crate::servers::ServerPlugin;
     use std::{ffi::OsStr, path::Path};
 
     #[tracing::instrument(level = "info")]

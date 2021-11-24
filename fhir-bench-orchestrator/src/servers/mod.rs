@@ -1,10 +1,13 @@
 //! TODO
 
+use self::{
+    firely_spark::SparkFhirServerPlugin, hapi_jpa::HapiJpaFhirServerPlugin,
+    ibm_fhir::IbmFhirServerPlugin,
+};
 use crate::{sample_data::SampleResource, AppState};
 use async_trait::async_trait;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tracing::info;
 use url::Url;
 
@@ -44,7 +47,7 @@ impl From<&str> for ServerName {
 #[async_trait]
 pub trait ServerHandle: Sync {
     /// Return the [ServerPlugin] that this [ServerHandle] is an instance of.
-    fn plugin(&self) -> Arc<dyn ServerPlugin>;
+    fn plugin(&self) -> &ServerPluginWrapper;
 
     /// Return the base URL for the running FHIR server, e.g. `http://localhost:8080/foo/`, which must have a
     /// trailing `/`.
@@ -135,7 +138,7 @@ pub fn request_builder_default(
 /// Implementations are required to be [Sync](core::marker::Sync), so that they may be used in `async`
 /// contexts and otherwise borrowed across threads.
 #[async_trait]
-pub trait ServerPlugin: Sync + Send {
+pub trait ServerPlugin: Clone {
     /// Returns the unique `ServerName` for this `ServerPlugin`.
     fn server_name(&self) -> &ServerName;
 
@@ -174,12 +177,68 @@ pub trait ServerPlugin: Sync + Send {
     }
 }
 
-/// Declares (and provides instances of) all of the `ServerPlugin` impls that are available to the
-/// application.
-pub fn create_server_plugins() -> Result<Vec<Arc<dyn ServerPlugin>>> {
-    Ok(vec![
-        Arc::new(hapi_jpa::HapiJpaFhirServerPlugin::new()),
-        Arc::new(firely_spark::SparkFhirServerPlugin::new()),
-        Arc::new(ibm_fhir::IbmFhirServerPlugin::new()),
-    ])
+/// An enum that wraps all supported [ServerPlugin] trait implementations.
+///
+/// This design pattern makes it much easier to downcast a given trait object via `let` binding, e.g.:
+///
+/// ```rust
+/// # use fhir_bench_orchestrator::servers::{ServerPlugin, ServerPluginWrapper};
+/// let plugins = fhir_bench_orchestrator::servers::create_server_plugins();
+/// let some_plugin = plugins.first();
+///
+/// if let Some(ServerPluginWrapper::HapiJpaFhirServerPlugin(hapi_plugin)) = some_plugin {
+///   println!("Server plugin name is {}.", hapi_plugin.server_name());
+/// }
+/// ```
+///
+/// Personal note: while this feels like a very dumb hack, it makes the app code **so much** nicer. Many,
+/// many kudos to <https://bennetthardwick.com/dont-use-boxed-trait-objects-for-struct-internals/> for
+/// the idea.
+#[derive(Clone, Debug)]
+pub enum ServerPluginWrapper {
+    HapiJpaFhirServerPlugin(HapiJpaFhirServerPlugin),
+    SparkFhirServerPlugin(SparkFhirServerPlugin),
+    IbmFhirServerPlugin(IbmFhirServerPlugin),
+}
+
+#[async_trait]
+impl ServerPlugin for ServerPluginWrapper {
+    fn server_name(&self) -> &ServerName {
+        match self {
+            ServerPluginWrapper::HapiJpaFhirServerPlugin(server_plugin) => {
+                server_plugin.server_name()
+            }
+            ServerPluginWrapper::SparkFhirServerPlugin(server_plugin) => {
+                server_plugin.server_name()
+            }
+            ServerPluginWrapper::IbmFhirServerPlugin(server_plugin) => server_plugin.server_name(),
+        }
+    }
+
+    async fn launch(&self, app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
+        match self {
+            ServerPluginWrapper::HapiJpaFhirServerPlugin(server_plugin) => {
+                server_plugin.launch(app_state).await
+            }
+            ServerPluginWrapper::SparkFhirServerPlugin(server_plugin) => {
+                server_plugin.launch(app_state).await
+            }
+            ServerPluginWrapper::IbmFhirServerPlugin(server_plugin) => {
+                server_plugin.launch(app_state).await
+            }
+        }
+    }
+}
+
+/// Declares (and provides instances of) all of the [ServerPlugin]s that are available to the application.
+pub fn create_server_plugins() -> Vec<ServerPluginWrapper> {
+    /*
+     * Design note: Why are these wrapped in Arcs? Great question! Each ServerHandle needs an owned copy of
+     * them and we can't have the trait extend Copy or Clone, as that would make it not object safe.
+     */
+    vec![
+        ServerPluginWrapper::HapiJpaFhirServerPlugin(hapi_jpa::HapiJpaFhirServerPlugin::default()),
+        ServerPluginWrapper::SparkFhirServerPlugin(firely_spark::SparkFhirServerPlugin::default()),
+        ServerPluginWrapper::IbmFhirServerPlugin(ibm_fhir::IbmFhirServerPlugin::default()),
+    ]
 }

@@ -4,13 +4,16 @@ use crate::AppState;
 use async_trait::async_trait;
 use eyre::{eyre, Context, Result};
 use std::path::{Path, PathBuf};
-use std::{process::Command, sync::Arc};
+use std::process::Command;
 use tracing::{trace_span, warn, Instrument};
 use url::Url;
+
+use super::ServerPluginWrapper;
 
 static SERVER_NAME: &str = "HAPI FHIR JPA Server";
 
 /// The trait object for the `ServerPlugin` implementation for the HAPI FHIR JPA server.
+#[derive(Clone, Debug)]
 pub struct HapiJpaFhirServerPlugin {
     server_name: ServerName,
 }
@@ -21,6 +24,12 @@ impl HapiJpaFhirServerPlugin {
         HapiJpaFhirServerPlugin {
             server_name: SERVER_NAME.into(),
         }
+    }
+}
+
+impl Default for HapiJpaFhirServerPlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -57,7 +66,7 @@ impl ServerPlugin for HapiJpaFhirServerPlugin {
             .expect("Unable to find server plugin");
         let http_client = super::client_default()?;
         let server_handle = HapiJpaFhirServerHandle {
-            server_plugin,
+            server_plugin: server_plugin.clone(),
             server_work_dir,
             http_client,
         };
@@ -121,15 +130,15 @@ async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) 
 
 /// Represents a launched instance of the HAPI FHIR JPA server.
 pub struct HapiJpaFhirServerHandle {
-    server_plugin: Arc<dyn ServerPlugin>,
+    server_plugin: ServerPluginWrapper,
     server_work_dir: PathBuf,
     http_client: reqwest::Client,
 }
 
 #[async_trait]
 impl ServerHandle for HapiJpaFhirServerHandle {
-    fn plugin(&self) -> Arc<dyn ServerPlugin> {
-        self.server_plugin.clone()
+    fn plugin(&self) -> &ServerPluginWrapper {
+        &self.server_plugin
     }
 
     fn base_url(&self) -> url::Url {
@@ -216,6 +225,7 @@ impl ServerHandle for HapiJpaFhirServerHandle {
 /// which is a not-cheap operation.
 #[cfg(test)]
 mod tests {
+    use crate::servers::ServerPlugin;
     use std::{ffi::OsStr, path::Path};
 
     #[tracing::instrument(level = "info")]
