@@ -10,12 +10,15 @@ use crate::{
 use async_trait::async_trait;
 use eyre::{eyre, Context, Result};
 use std::path::{Path, PathBuf};
-use std::{process::Command, sync::Arc};
+use std::process::Command;
 use url::Url;
+
+use super::ServerPluginWrapper;
 
 static SERVER_NAME: &str = "Spark FHIR R4 Server";
 
 /// The trait object for the `ServerPlugin` implementation for the Spark FHIR server.
+#[derive(Clone, Debug)]
 pub struct SparkFhirServerPlugin {
     server_name: ServerName,
 }
@@ -26,6 +29,12 @@ impl SparkFhirServerPlugin {
         SparkFhirServerPlugin {
             server_name: SERVER_NAME.into(),
         }
+    }
+}
+
+impl Default for SparkFhirServerPlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -88,7 +97,7 @@ async fn launch_server(app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
         .expect("Unable to find server plugin");
     let http_client = super::client_default()?;
     let server_handle = SparkFhirServerHandle {
-        server_plugin,
+        server_plugin: server_plugin.clone(),
         server_work_dir,
         http_client,
     };
@@ -149,15 +158,15 @@ async fn wait_for_ready(app_state: &AppState, server_handle: &dyn ServerHandle) 
 
 /// Represents a launched instance of the Spark FHIR server.
 pub struct SparkFhirServerHandle {
-    server_plugin: Arc<dyn ServerPlugin>,
+    server_plugin: ServerPluginWrapper,
     server_work_dir: PathBuf,
     http_client: reqwest::Client,
 }
 
 #[async_trait]
 impl ServerHandle for SparkFhirServerHandle {
-    fn plugin(&self) -> Arc<dyn ServerPlugin> {
-        self.server_plugin.clone()
+    fn plugin(&self) -> &ServerPluginWrapper {
+        &self.server_plugin
     }
 
     fn base_url(&self) -> url::Url {
@@ -213,6 +222,7 @@ impl ServerHandle for SparkFhirServerHandle {
 /// which is a not-cheap operation.
 #[cfg(test)]
 mod tests {
+    use crate::servers::ServerPlugin;
     use std::{ffi::OsStr, path::Path};
 
     #[tracing::instrument(level = "info")]

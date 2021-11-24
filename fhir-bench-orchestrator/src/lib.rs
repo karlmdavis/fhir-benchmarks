@@ -14,24 +14,23 @@ use crate::servers::{ServerHandle, ServerPlugin};
 use crate::test_framework::{FrameworkOperationLog, FrameworkOperationResult, FrameworkResults};
 use chrono::prelude::*;
 use eyre::{eyre, Result, WrapErr};
-use std::sync::Arc;
+use servers::ServerPluginWrapper;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, fmt::format::FmtSpan, EnvFilter};
 
 /// Represents the application's context/state.
 pub struct AppState {
     pub config: AppConfig,
-    pub server_plugins: Vec<Arc<dyn ServerPlugin>>,
+    pub server_plugins: Vec<ServerPluginWrapper>,
     pub sample_data: SampleData,
 }
 
 impl AppState {
     /// Returns the [ServerPlugin] matching the specified name.
-    fn find_server_plugin(&self, server_name: &str) -> Option<Arc<dyn ServerPlugin>> {
+    fn find_server_plugin(&self, server_name: &str) -> Option<&ServerPluginWrapper> {
         self.server_plugins
             .iter()
             .find(|p| p.server_name().0 == server_name)
-            .cloned()
     }
 }
 
@@ -67,8 +66,6 @@ pub async fn run_bench_orchestrator() -> Result<()> {
     // Test each selected FHIR server implementation.
     let mut framework_results = FrameworkResults::new(&app_state.config, &app_state.server_plugins);
     for server_plugin in &app_state.server_plugins {
-        let server_plugin: &dyn ServerPlugin = &**server_plugin;
-
         // Store results for the test here.
         let mut server_result = framework_results
             .get_mut(server_plugin.server_name())
@@ -144,7 +141,7 @@ async fn create_app_state() -> Result<AppState> {
     let config = AppConfig::new()?;
 
     // Find all FHIR server implementations that can be tested.
-    let server_plugins: Vec<Arc<dyn ServerPlugin>> = servers::create_server_plugins()?;
+    let server_plugins: Vec<ServerPluginWrapper> = servers::create_server_plugins();
 
     // Setup all global/shared resources.
     let sample_data = sample_data::generate_data_using_config(&config)
@@ -187,11 +184,9 @@ fn output_results(framework_results: &FrameworkResults) {
 /// Provides utility code for use in tests.
 #[cfg(test)]
 mod tests_util {
-    use std::sync::Arc;
-
     use crate::{
         sample_data,
-        servers::{self, ServerPlugin},
+        servers::{self, ServerPluginWrapper},
         AppConfig, AppState,
     };
     use eyre::{Result, WrapErr};
@@ -206,7 +201,7 @@ mod tests_util {
         let config = AppConfig::new()?;
 
         // Find all FHIR server implementations that can be tested.
-        let server_plugins: Vec<Arc<dyn ServerPlugin>> = servers::create_server_plugins()?;
+        let server_plugins: Vec<ServerPluginWrapper> = servers::create_server_plugins();
 
         // Setup all global/shared resources.
         let sample_data = sample_data::generate_data_using_config(&config)
