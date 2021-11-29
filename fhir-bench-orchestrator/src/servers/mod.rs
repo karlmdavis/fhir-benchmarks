@@ -1,19 +1,16 @@
 //! TODO
 
-use self::{
-    firely_spark::SparkFhirServerPlugin, hapi_jpa::HapiJpaFhirServerPlugin,
-    ibm_fhir::IbmFhirServerPlugin,
+use crate::{
+    config::AppConfig, sample_data::SampleResource,
+    servers::docker_compose::DockerComposeServerPlugin, AppState,
 };
-use crate::{sample_data::SampleResource, AppState};
 use async_trait::async_trait;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use url::Url;
 
-mod firely_spark;
-mod hapi_jpa;
-mod ibm_fhir;
+mod docker_compose;
 
 /// Represents the unique name of a FHIR server implementation.
 ///
@@ -26,6 +23,13 @@ mod ibm_fhir;
 /// ```
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub struct ServerName(pub String);
+
+impl ServerName {
+    /// Converts the [ServerName] to a `&str` representation of it.
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 impl std::fmt::Display for ServerName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -124,12 +128,30 @@ pub fn client_default() -> Result<reqwest::Client> {
 /// * `client`: the [reqwest::Client] to use
 /// * `method`: the [http::Method] to call
 /// * `url`: the full/absolute [Url] to call
-pub fn request_builder_default(
+fn request_builder_default(
     client: reqwest::Client,
     method: http::Method,
     url: Url,
 ) -> reqwest::RequestBuilder {
     client.request(method, url)
+}
+
+/// Creates a new [reqwest::RequestBuilder] that is properly configured for making HTTP(S)]
+/// requests to the server, e.g. authentication headers are set, etc.
+///
+/// Note: this is intended for use in [ServerHandle] implementations; other code should not use it directly,
+/// and should instead use [ServerHandle::request_builder()].
+///
+/// Parameters:
+/// * `client`: the [reqwest::Client] to use
+/// * `method`: the [http::Method] to call
+/// * `url`: the full/absolute [Url] to call
+pub fn request_builder_ibm_fhir(
+    client: reqwest::Client,
+    method: http::Method,
+    url: Url,
+) -> reqwest::RequestBuilder {
+    request_builder_default(client, method, url).basic_auth("fhiruser", Some("change-password"))
 }
 
 /// [ServerPlugin] implementations each represent a supported FHIR server implementation that can be started
@@ -182,11 +204,13 @@ pub trait ServerPlugin: Clone {
 /// This design pattern makes it much easier to downcast a given trait object via `let` binding, e.g.:
 ///
 /// ```rust
+/// # use fhir_bench_orchestrator::config::AppConfig;
 /// # use fhir_bench_orchestrator::servers::{ServerPlugin, ServerPluginWrapper};
-/// let plugins = fhir_bench_orchestrator::servers::create_server_plugins();
+/// let config = AppConfig::new().unwrap();
+/// let plugins = fhir_bench_orchestrator::servers::create_server_plugins(&config).unwrap();
 /// let some_plugin = plugins.first();
 ///
-/// if let Some(ServerPluginWrapper::HapiJpaFhirServerPlugin(hapi_plugin)) = some_plugin {
+/// if let Some(ServerPluginWrapper::DockerComposeServerPlugin(hapi_plugin)) = some_plugin {
 ///   println!("Server plugin name is {}.", hapi_plugin.server_name());
 /// }
 /// ```
@@ -196,34 +220,22 @@ pub trait ServerPlugin: Clone {
 /// the idea.
 #[derive(Clone, Debug)]
 pub enum ServerPluginWrapper {
-    HapiJpaFhirServerPlugin(HapiJpaFhirServerPlugin),
-    SparkFhirServerPlugin(SparkFhirServerPlugin),
-    IbmFhirServerPlugin(IbmFhirServerPlugin),
+    DockerComposeServerPlugin(DockerComposeServerPlugin),
 }
 
 #[async_trait]
 impl ServerPlugin for ServerPluginWrapper {
     fn server_name(&self) -> &ServerName {
         match self {
-            ServerPluginWrapper::HapiJpaFhirServerPlugin(server_plugin) => {
+            ServerPluginWrapper::DockerComposeServerPlugin(server_plugin) => {
                 server_plugin.server_name()
             }
-            ServerPluginWrapper::SparkFhirServerPlugin(server_plugin) => {
-                server_plugin.server_name()
-            }
-            ServerPluginWrapper::IbmFhirServerPlugin(server_plugin) => server_plugin.server_name(),
         }
     }
 
     async fn launch(&self, app_state: &AppState) -> Result<Box<dyn ServerHandle>> {
         match self {
-            ServerPluginWrapper::HapiJpaFhirServerPlugin(server_plugin) => {
-                server_plugin.launch(app_state).await
-            }
-            ServerPluginWrapper::SparkFhirServerPlugin(server_plugin) => {
-                server_plugin.launch(app_state).await
-            }
-            ServerPluginWrapper::IbmFhirServerPlugin(server_plugin) => {
+            ServerPluginWrapper::DockerComposeServerPlugin(server_plugin) => {
                 server_plugin.launch(app_state).await
             }
         }
@@ -231,14 +243,41 @@ impl ServerPlugin for ServerPluginWrapper {
 }
 
 /// Declares (and provides instances of) all of the [ServerPlugin]s that are available to the application.
-pub fn create_server_plugins() -> Vec<ServerPluginWrapper> {
+pub fn create_server_plugins(config: &AppConfig) -> Result<Vec<ServerPluginWrapper>> {
     /*
      * Design note: Why are these wrapped in Arcs? Great question! Each ServerHandle needs an owned copy of
      * them and we can't have the trait extend Copy or Clone, as that would make it not object safe.
      */
-    vec![
-        ServerPluginWrapper::HapiJpaFhirServerPlugin(hapi_jpa::HapiJpaFhirServerPlugin::default()),
-        ServerPluginWrapper::SparkFhirServerPlugin(firely_spark::SparkFhirServerPlugin::default()),
-        ServerPluginWrapper::IbmFhirServerPlugin(ibm_fhir::IbmFhirServerPlugin::default()),
-    ]
+    Ok(vec![
+        ServerPluginWrapper::DockerComposeServerPlugin(DockerComposeServerPlugin::new(
+            "firely_spark".into(),
+            config
+                .benchmark_dir()?
+                .join("server_builds")
+                .join("firely_spark")
+                .join("docker_compose_firely_spark.sh"),
+            Url::parse("http://localhost:5555/fhir/").expect("Unable to parse URL."),
+            request_builder_default,
+        )),
+        ServerPluginWrapper::DockerComposeServerPlugin(DockerComposeServerPlugin::new(
+            "hapi_jpaserver_starter".into(),
+            config
+                .benchmark_dir()?
+                .join("server_builds")
+                .join("hapi_jpaserver_starter")
+                .join("docker_compose_hapi_jpaserver_starter.sh"),
+            Url::parse("http://localhost:8080/fhir/").expect("Unable to parse URL."),
+            request_builder_default,
+        )),
+        ServerPluginWrapper::DockerComposeServerPlugin(DockerComposeServerPlugin::new(
+            "ibm_fhir".into(),
+            config
+                .benchmark_dir()?
+                .join("server_builds")
+                .join("ibm_fhir")
+                .join("docker_compose_ibm_fhir.sh"),
+            Url::parse("https://localhost:9443/fhir-server/api/v4/").expect("Unable to parse URL."),
+            request_builder_ibm_fhir,
+        )),
+    ])
 }
