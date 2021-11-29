@@ -141,7 +141,7 @@ async fn create_app_state() -> Result<AppState> {
     let config = AppConfig::new()?;
 
     // Find all FHIR server implementations that can be tested.
-    let server_plugins: Vec<ServerPluginWrapper> = servers::create_server_plugins();
+    let server_plugins: Vec<ServerPluginWrapper> = servers::create_server_plugins(&config)?;
 
     // Setup all global/shared resources.
     let sample_data = sample_data::generate_data_using_config(&config)
@@ -179,39 +179,4 @@ fn verify_prereqs() -> Result<()> {
 fn output_results(framework_results: &FrameworkResults) {
     let framework_results_pretty = serde_json::to_string_pretty(&framework_results).unwrap();
     println!("{}", framework_results_pretty);
-}
-
-/// Provides utility code for use in tests.
-#[cfg(test)]
-mod tests_util {
-    use crate::{
-        sample_data,
-        servers::{self, ServerPluginWrapper},
-        AppConfig, AppState,
-    };
-    use eyre::{Result, WrapErr};
-
-    /// Builds an [AppState] for tests to use.
-    ///
-    /// Please note that this is not safe for concurrent use, as the sample data is generated in a shared
-    /// directory, which can cause race conditions. Any tests using this should have a
-    /// `#[serial_test::serial(sample_data)]` attribute added to them to avoid spurious failures.
-    pub async fn create_app_state_test() -> Result<AppState> {
-        // Parse command line args.
-        let config = AppConfig::new()?;
-
-        // Find all FHIR server implementations that can be tested.
-        let server_plugins: Vec<ServerPluginWrapper> = servers::create_server_plugins();
-
-        // Setup all global/shared resources.
-        let sample_data = sample_data::generate_data_using_config(&config)
-            .await
-            .context("Error when generating sample data.")?;
-
-        Ok(AppState {
-            config,
-            server_plugins,
-            sample_data,
-        })
-    }
 }
